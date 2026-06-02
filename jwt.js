@@ -10,6 +10,17 @@ export const createTokens = (user) => {
     );
 };
 
+export const optionalToken = () => (req, res, next) => {
+    const authHeader = req.headers["authorization"];
+    const accessToken = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null) || req.cookies["accessToken"];
+    if (accessToken) {
+        try {
+            req.user = jwt.verify(accessToken, process.env.JWT_SECRET);
+        } catch (_) {}
+    }
+    return next();
+};
+
 export const validateToken = (requiredRoles = []) => (req, res, next) => {
     const authHeader = req.headers["authorization"];
     const accessToken = (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null) || req.cookies["accessToken"];

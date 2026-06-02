@@ -84,8 +84,18 @@ const s3 = new S3Client({
     region: process.env.BUCKET_REGION
 });
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const MB = 1024 * 1024;
+const uploadPost     = multer({ storage, limits: { fileSize: 10  * MB } });
+const uploadArtifact = multer({ storage, limits: { fileSize: 100 * MB } });
+const upload = uploadArtifact; // legacy alias used by /api/upload (artifacts)
 const bucketName = 'lavozbucket';
+
+const handleMulterError = (err, req, res, next) => {
+    if (err?.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({ error: `File too large. Max size is ${err.limit / MB} MB.` });
+    }
+    next(err);
+};
 
 // DB  CLEANUP FEATURE: DELETE POSTS > 4WKS OLD
 cron.schedule('0 0 0 * * *', () => {
@@ -127,7 +137,7 @@ cron.schedule('0 0 0 * * *', () => {
 });
 
 // FOR POSTS (DELETE EVERY 4 WEEKS)
-app.post("/api/uploadPost", upload.single("file"), async (req, res) => {
+app.post("/api/uploadPost", uploadPost.single("file"), handleMulterError, async (req, res) => {
     try {
         const file = req.file;
         const imageName = randomImageName(req.file.originalname);
@@ -166,7 +176,7 @@ app.post("/api/uploadPost", upload.single("file"), async (req, res) => {
 });
 
 // FOR STORIES (delete every 48hr)
-app.post("/api/uploadStory", upload.single("file"), async (req, res) => {
+app.post("/api/uploadStory", uploadPost.single("file"), handleMulterError, async (req, res) => {
     try {
         const file = req.file;
         const imageName = randomImageName(req.file.originalname);
@@ -194,8 +204,8 @@ app.post("/api/uploadStory", upload.single("file"), async (req, res) => {
     }
 });
 
-// FOR NON-POSTS
-app.post("/api/upload", upload.single("file"), async (req, res) => {
+// FOR NON-POSTS (artifacts — 100 MB limit)
+app.post("/api/upload", uploadArtifact.single("file"), handleMulterError, async (req, res) => {
     try {
         const file = req.file;
         const imageName = randomImageName(req.file.originalname);
