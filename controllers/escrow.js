@@ -1,5 +1,6 @@
 import { db } from "../connect.js";
 import moment from "moment";
+import { logEvent } from "../utils/escrowLogger.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -40,6 +41,7 @@ export const createEscrow = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
+                logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
                 return res.status(201).json({ id: data.insertId });
             });
         });
@@ -71,6 +73,7 @@ export const createEscrowByLocal = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
+                logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
                 return res.status(201).json({ id: data.insertId });
             });
         });
@@ -122,7 +125,9 @@ export const getMyEscrows = (req, res) => {
 
 // GET /api/escrows/:id — participants + admin
 export const getEscrowById = (req, res) => {
-    const q = `
+    const escrowId = req.params.id;
+
+    const escrowQ = `
         SELECT e.*,
             p.title AS projectTitle, p.description AS projectDescription,
             p.skills AS projectSkills, p.timeline AS projectTimeline,
@@ -142,7 +147,7 @@ export const getEscrowById = (req, res) => {
         ))
         WHERE e.id = ?
     `;
-    db.query(q, [req.params.id], (err, data) => {
+    db.query(escrowQ, [escrowId], (err, data) => {
         if (err) return res.status(500).json(err);
         if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
 
@@ -161,7 +166,80 @@ export const getEscrowById = (req, res) => {
             ? { id: artifact_id, fileUrl: artifact_fileUrl, description: artifact_description, createdAt: artifact_createdAt }
             : null;
 
-        return res.status(200).json(escrow);
+        // Fetch milestones with their latest artifact each
+        const milestonesQ = `
+            SELECT m.*,
+                ar.id       AS latestArtifact_id,
+                ar.fileUrl  AS latestArtifact_fileUrl,
+                ar.description AS latestArtifact_description,
+                ar.createdAt   AS latestArtifact_createdAt
+            FROM milestones AS m
+            LEFT JOIN artifacts AS ar ON (ar.id = (
+                SELECT id FROM artifacts WHERE milestoneId = m.id ORDER BY createdAt DESC LIMIT 1
+            ))
+            WHERE m.escrowId = ?
+            ORDER BY m.\`order\` ASC
+        `;
+        db.query(milestonesQ, [escrowId], (err, milestoneRows) => {
+            if (err) return res.status(500).json(err);
+
+            escrow.milestones = milestoneRows.map((m) => {
+                const {
+                    latestArtifact_id, latestArtifact_fileUrl,
+                    latestArtifact_description, latestArtifact_createdAt,
+                    ...milestone
+                } = m;
+                milestone.latestArtifact = latestArtifact_id
+                    ? { id: latestArtifact_id, fileUrl: latestArtifact_fileUrl, description: latestArtifact_description, createdAt: latestArtifact_createdAt }
+                    : null;
+                return milestone;
+            });
+
+            const total    = milestoneRows.length;
+            const approved = milestoneRows.filter((m) => m.status === "approved").length;
+            escrow.progress = { total, approved };
+
+            return res.status(200).json(escrow);
+        });
+    });
+};
+
+// GET /api/escrows/:id/events — participants + admin
+export const getEscrowEvents = (req, res) => {
+    const escrowId = req.params.id;
+
+    db.query("SELECT studentId, localId FROM escrows WHERE id = ?", [escrowId], (err, data) => {
+        if (err) return res.status(500).json(err);
+        if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
+
+        const escrow = data[0];
+        const uid  = req.user.id;
+        const role = req.user.account_type;
+        const isParticipant = escrow.studentId === uid || escrow.localId === uid;
+
+        if (role !== "admin" && !isParticipant) {
+            return res.status(403).json({ error: "Forbidden." });
+        }
+
+        const q = `
+            SELECT
+                ev.id, ev.escrowId, ev.milestoneId, ev.artifactId,
+                ev.actorId, ev.actorRole, ev.eventType, ev.note, ev.createdAt,
+                u.username  AS actorUsername,
+                u.profilePic AS actorProfilePic,
+                m.title     AS milestoneTitle,
+                ar.description AS artifactDescription
+            FROM escrow_events AS ev
+            JOIN users AS u ON (u.id = ev.actorId)
+            LEFT JOIN milestones AS m  ON (m.id  = ev.milestoneId)
+            LEFT JOIN artifacts  AS ar ON (ar.id = ev.artifactId)
+            WHERE ev.escrowId = ?
+            ORDER BY ev.createdAt ASC
+        `;
+        db.query(q, [escrowId], (err, events) => {
+            if (err) return res.status(500).json(err);
+            return res.status(200).json(events);
+        });
     });
 };
 
@@ -254,6 +332,7 @@ export const acceptEscrow = (req, res) => {
             [now(), escrow.id],
             (err) => {
                 if (err) return res.status(500).json(err);
+                logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_accepted" });
                 return res.status(200).json("Escrow accepted.");
             }
         );
@@ -273,6 +352,7 @@ export const cancelEscrowByStudent = (req, res) => {
             [now(), escrow.id],
             (err) => {
                 if (err) return res.status(500).json(err);
+                logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
                 return res.status(200).json("Escrow declined.");
             }
         );

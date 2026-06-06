@@ -14,6 +14,7 @@ import adRoutes from "./routes/ads.js";
 import projectRoutes from "./routes/projects.js";
 import serviceRoutes from "./routes/services.js";
 import escrowRoutes from "./routes/escrows.js";
+import milestoneRoutes from "./routes/milestones.js";
 import artifactRoutes from "./routes/artifacts.js";
 import cors from "cors";
 import multer from "multer";
@@ -282,6 +283,7 @@ app.use("/api/ads", adRoutes)
 app.use("/api/projects", projectRoutes)
 app.use("/api/services", serviceRoutes)
 app.use("/api/escrows", escrowRoutes)
+app.use("/api/escrows/:id/milestones", milestoneRoutes)
 app.use("/api/artifacts", artifactRoutes)
 
 const PORT = process.env.PORT || 8800;

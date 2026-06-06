@@ -1,15 +1,16 @@
 import { db } from "../connect.js";
 import moment from "moment";
+import { logEvent } from "../utils/escrowLogger.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
-// POST /api/escrows/:id/submit
-// Stores the artifact record and transitions the escrow to submitted in one operation.
+// POST /api/escrows/:id/milestones/:mid/submit
 export const submitArtifact = (req, res) => {
-    const escrowId = req.params.id;
+    const escrowId   = req.params.id;
+    const milestoneId = req.params.mid;
     const { fileUrl, description } = req.body;
 
-    if (!fileUrl) return res.status(400).json({ error: "fileUrl is required." });
+    if (!fileUrl && !description) return res.status(400).json({ error: "fileUrl or description is required." });
 
     db.query("SELECT * FROM escrows WHERE id = ?", [escrowId], (err, data) => {
         if (err) return res.status(500).json(err);
@@ -18,30 +19,61 @@ export const submitArtifact = (req, res) => {
         const escrow = data[0];
 
         if (escrow.studentId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
-        if (escrow.status !== "active") return res.status(409).json({ error: "Only active escrows can be submitted." });
+        if (!["active", "pending"].includes(escrow.status)) {
+            return res.status(409).json({ error: "Artifacts can only be submitted on active escrows." });
+        }
 
-        const ts = now();
-
-        const artifactQ = "INSERT INTO artifacts(`escrowId`, `studentId`, `fileUrl`, `description`, `createdAt`) VALUES (?)";
-        const artifactValues = [escrowId, req.user.id, fileUrl, description ?? null, ts];
-
-        db.query(artifactQ, [artifactValues], (err, artifactData) => {
+        // Validate milestone belongs to this escrow and is in a submittable state
+        db.query("SELECT * FROM milestones WHERE id = ? AND escrowId = ?", [milestoneId, escrowId], (err, mData) => {
             if (err) return res.status(500).json(err);
+            if (!mData || mData.length === 0) return res.status(404).json({ error: "Milestone not found." });
 
-            db.query(
-                "UPDATE escrows SET status = 'submitted', submittedAt = ? WHERE id = ?",
-                [ts, escrowId],
-                (err) => {
-                    if (err) return res.status(500).json(err);
-                    return res.status(201).json({ id: artifactData.insertId });
-                }
-            );
+            const milestone = mData[0];
+            if (!["pending", "active", "revision_requested"].includes(milestone.status)) {
+                return res.status(409).json({ error: "This milestone cannot accept a new submission." });
+            }
+
+            const ts = now();
+
+            const artifactQ = "INSERT INTO artifacts(`escrowId`, `milestoneId`, `studentId`, `fileUrl`, `description`, `createdAt`) VALUES (?)";
+            const artifactValues = [escrowId, milestoneId, req.user.id, fileUrl ?? null, description ?? null, ts];
+
+            db.query(artifactQ, [artifactValues], (err, artifactData) => {
+                if (err) return res.status(500).json(err);
+
+                // Advance milestone to submitted
+                db.query(
+                    "UPDATE milestones SET status = 'submitted', updatedAt = ? WHERE id = ?",
+                    [ts, milestoneId],
+                    (err) => {
+                        if (err) return res.status(500).json(err);
+
+                        // Keep escrow-level submittedAt for backward compat
+                        db.query(
+                            "UPDATE escrows SET status = 'submitted', submittedAt = ? WHERE id = ?",
+                            [ts, escrowId],
+                            (err) => {
+                                if (err) return res.status(500).json(err);
+                                logEvent(db, {
+                                    escrowId:    parseInt(escrowId),
+                                    milestoneId: parseInt(milestoneId),
+                                    artifactId:  artifactData.insertId,
+                                    actorId:     req.user.id,
+                                    actorRole:   req.user.account_type,
+                                    eventType:   "artifact_submitted",
+                                });
+                                return res.status(201).json({ id: artifactData.insertId });
+                            }
+                        );
+                    }
+                );
+            });
         });
     });
 };
 
 // GET /api/artifacts/:escrowId
-// Returns all artifacts for an escrow. Only participants and admins may view.
+// Returns artifacts grouped by milestoneId. Only participants and admins may view.
 export const getArtifactsByEscrow = (req, res) => {
     const escrowId = req.params.escrowId;
 
@@ -66,7 +98,16 @@ export const getArtifactsByEscrow = (req, res) => {
         `;
         db.query(q, [escrowId], (err, artifacts) => {
             if (err) return res.status(500).json(err);
-            return res.status(200).json(artifacts);
+
+            // Group by milestoneId; key is the id as a string, or "unlinked" for legacy rows
+            const grouped = {};
+            for (const artifact of artifacts) {
+                const key = artifact.milestoneId != null ? String(artifact.milestoneId) : "unlinked";
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(artifact);
+            }
+
+            return res.status(200).json(grouped);
         });
     });
 };
