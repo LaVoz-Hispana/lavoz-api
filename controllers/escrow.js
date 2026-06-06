@@ -25,9 +25,10 @@ export const createEscrow = (req, res) => {
     }
 
     // Derive localId from the project owner — never trust the client for this
-    db.query("SELECT userId FROM projects WHERE id = ? AND status = 'open'", [projectId], (err, projects) => {
+    db.query("SELECT userId, status FROM projects WHERE id = ?", [projectId], (err, projects) => {
         if (err) return res.status(500).json(err);
-        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found or is closed." });
+        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found." });
+        if (projects[0].status !== "open") return res.status(400).json({ error: "Project is not open." });
 
         const localId = projects[0].userId;
 
@@ -41,8 +42,11 @@ export const createEscrow = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
-                logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                return res.status(201).json({ id: data.insertId });
+                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], (err) => {
+                    if (err) return res.status(500).json(err);
+                    logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
+                    return res.status(201).json({ id: data.insertId });
+                });
             });
         });
     });
@@ -57,10 +61,11 @@ export const createEscrowByLocal = (req, res) => {
     }
 
     // Verify the project belongs to this local
-    db.query("SELECT userId FROM projects WHERE id = ? AND status = 'open'", [projectId], (err, projects) => {
+    db.query("SELECT userId, status FROM projects WHERE id = ?", [projectId], (err, projects) => {
         if (err) return res.status(500).json(err);
-        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found or is closed." });
+        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found." });
         if (projects[0].userId !== req.user.id) return res.status(403).json({ error: "You can only invite students to your own projects." });
+        if (projects[0].status !== "open") return res.status(400).json({ error: "Project is not open." });
 
         // Verify the target user is a student
         db.query("SELECT id FROM users WHERE id = ? AND account_type = 'student'", [studentId], (err, students) => {
@@ -73,8 +78,11 @@ export const createEscrowByLocal = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
-                logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                return res.status(201).json({ id: data.insertId });
+                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], (err) => {
+                    if (err) return res.status(500).json(err);
+                    logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
+                    return res.status(201).json({ id: data.insertId });
+                });
             });
         });
     });
@@ -276,7 +284,14 @@ export const updateEscrowStatus = (req, res) => {
 
         db.query(q, params, (err) => {
             if (err) return res.status(500).json(err);
-            return res.status(200).json("Status updated.");
+            if (nextStatus === "cancelled") {
+                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], (err) => {
+                    if (err) return res.status(500).json(err);
+                    return res.status(200).json("Status updated.");
+                });
+            } else {
+                return res.status(200).json("Status updated.");
+            }
         });
     });
 };
@@ -352,8 +367,11 @@ export const cancelEscrowByStudent = (req, res) => {
             [now(), escrow.id],
             (err) => {
                 if (err) return res.status(500).json(err);
-                logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
-                return res.status(200).json("Escrow declined.");
+                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], (err) => {
+                    if (err) return res.status(500).json(err);
+                    logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
+                    return res.status(200).json("Escrow declined.");
+                });
             }
         );
     });

@@ -188,8 +188,11 @@ export const finalizeEscrow = (req, res) => {
 
         db.query("UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?", [ts, escrowId], (err) => {
             if (err) return res.status(500).json(err);
-            logEvent(db, { escrowId: parseInt(escrowId), actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_completed" });
-            return res.status(200).json({ completed: true });
+            db.query("UPDATE projects SET status = 'closed' WHERE id = ?", [escrow.projectId], (err) => {
+                if (err) return res.status(500).json(err);
+                logEvent(db, { escrowId: parseInt(escrowId), actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_completed" });
+                return res.status(200).json({ completed: true });
+            });
         });
     });
 };
