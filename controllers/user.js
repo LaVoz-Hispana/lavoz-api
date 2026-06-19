@@ -32,10 +32,9 @@ export const getAllUsers = (req, res) => {
 };
 
 export const getFollowers = (req, res) => {
-    const q = `SELECT users.*, CASE WHEN relationships.followedUserId IS NOT NULL THEN 1 ELSE 0 END AS following
-               FROM users
-               JOIN relationships ON users.id = relationships.followedUserId
-               WHERE relationships.followerUserId = ?`;
+    const q = `SELECT users.* FROM users
+               JOIN relationships ON users.id = relationships.followerUserId
+               WHERE relationships.followedUserId = ?`;
 
     db.query(q, [req.user.id], (err, data) => {
       if (err) {
@@ -68,7 +67,7 @@ export const getFollowing = (req, res) => {
 
 export const updateUser = (req, res) => {
     const q =
-      "UPDATE users SET `name`=?,`city`=?,`language`=?,`profilePic`=?,`coverPic`=?,`instagram`=?,`twitter`=?,`facebook`=?,`website`=?,`account_type`=?,`business_type`=?,`bio`=?,`skills`=?,`university`=?,`major`=?,`grad_year`=? WHERE id=?";
+      "UPDATE users SET `name`=?,`city`=?,`language`=?,`profilePic`=?,`coverPic`=?,`instagram`=?,`twitter`=?,`facebook`=?,`website`=?,`account_type`=?,`business_type`=?,`bio`=?,`skills`=?,`university`=?,`major`=?,`grad_year`=?,`phone`=? WHERE id=?";
 
     db.query(
       q,
@@ -89,6 +88,7 @@ export const updateUser = (req, res) => {
         req.body.university ?? null,
         req.body.major ?? null,
         req.body.grad_year ?? null,
+        req.body.phone ?? null,
         req.user.id,
       ],
       (err, data) => {

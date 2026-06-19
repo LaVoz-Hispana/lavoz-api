@@ -8,6 +8,6 @@ router.get("/", validateToken(), getMessages);
 router.get("/new", validateToken(), getNewMessages);
 router.get("/all", validateToken(), getAllMessages);
 router.post("/", validateToken(), addMessage);
-router.put("/markRead", markAsRead);
+router.put("/markRead", validateToken(), markAsRead);
 
 export default router
