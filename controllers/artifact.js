@@ -1,6 +1,7 @@
 import { db } from "../connect.js";
 import moment from "moment";
 import { logEvent } from "../utils/escrowLogger.js";
+import { sendNotification } from "../utils/notificationHelper.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -62,6 +63,7 @@ export const submitArtifact = (req, res) => {
                                     actorRole:   req.user.account_type,
                                     eventType:   "artifact_submitted",
                                 });
+                                sendNotification(escrow.localId, req.user.id, "artifact_submitted", parseInt(escrowId));
                                 return res.status(201).json({ id: artifactData.insertId });
                             }
                         );

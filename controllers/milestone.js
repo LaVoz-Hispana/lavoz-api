@@ -1,6 +1,7 @@
 import { db } from "../connect.js";
 import moment from "moment";
 import { logEvent } from "../utils/escrowLogger.js";
+import { sendNotification } from "../utils/notificationHelper.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -34,6 +35,7 @@ export const createMilestone = (req, res) => {
         db.query(q, [values], (err, data) => {
             if (err) return res.status(500).json(err);
             logEvent(db, { escrowId: parseInt(escrowId), milestoneId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "milestone_added" });
+            sendNotification(escrow.studentId, req.user.id, "milestone_added", parseInt(escrowId));
             return res.status(201).json({ id: data.insertId });
         });
     });
@@ -157,6 +159,7 @@ export const approveMilestone = (req, res) => {
                 if (err) return res.status(500).json(err);
 
                 logEvent(db, { escrowId: parseInt(escrowId), milestoneId: parseInt(mid), actorId: req.user.id, actorRole: req.user.account_type, eventType: "milestone_approved" });
+                sendNotification(escrow.studentId, req.user.id, "milestone_approved", parseInt(escrowId));
 
                 // Always reset escrow to active — finalization is an explicit action
                 db.query(
@@ -191,6 +194,7 @@ export const finalizeEscrow = (req, res) => {
             db.query("UPDATE projects SET status = 'closed' WHERE id = ?", [escrow.projectId], (err) => {
                 if (err) return res.status(500).json(err);
                 logEvent(db, { escrowId: parseInt(escrowId), actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_completed" });
+                sendNotification(escrow.studentId, req.user.id, "escrow_completed", parseInt(escrowId));
                 return res.status(200).json({ completed: true });
             });
         });
@@ -225,6 +229,7 @@ export const requestMilestoneChanges = (req, res) => {
                 db.query("UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?", [ts, escrowId], (err) => {
                     if (err) return res.status(500).json(err);
                     logEvent(db, { escrowId: parseInt(escrowId), milestoneId: parseInt(mid), actorId: req.user.id, actorRole: req.user.account_type, eventType: "change_requested", note });
+                    sendNotification(escrow.studentId, req.user.id, "change_requested", parseInt(escrowId));
                     return res.status(200).json("Changes requested.");
                 });
             });
