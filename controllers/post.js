@@ -50,22 +50,37 @@ export const getPosts = async (req, res) => {
       if (err) {
         console.error("Error verifying token:", err);
       } else {
-        if (userId !== "undefined") {
-            q = `SELECT p.*, u.id AS userId, username, profilePic FROM posts AS p JOIN users AS u ON (u.id = p.userId) WHERE p.userId = ? ORDER BY p.createdAt DESC LIMIT ${limit}`;
+        if (userId && userId !== "undefined") {
+            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.userId = ? ORDER BY p.createdAt DESC LIMIT ${limit}`;
             values = [userId];
         } else {
-            q = `SELECT p.*, u.id AS userId, username, profilePic FROM posts AS p JOIN users AS u ON (u.id = p.userId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
+            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
             values = [];
         }
       }
     });
   } else {
-    q = `SELECT p.*, u.id AS userId, username, profilePic FROM posts AS p JOIN users AS u ON (u.id = p.userId)
-      ORDER BY p.createdAt DESC LIMIT ${limit}`;
+    q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
     values = [];
   }
 
   db.query(q, values, (err, data) => {
+    if (err) return res.status(500).json(err);
+    return res.status(200).json(data);
+  });
+};
+
+export const getProjectPosts = (req, res) => {
+  const { projectId } = req.params;
+  const q = `
+    SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle
+    FROM posts AS p
+    JOIN users AS u ON (u.id = p.userId)
+    LEFT JOIN projects AS pr ON (pr.id = p.projectId)
+    WHERE p.projectId = ?
+    ORDER BY p.createdAt DESC
+  `;
+  db.query(q, [projectId], (err, data) => {
     if (err) return res.status(500).json(err);
     return res.status(200).json(data);
   });
@@ -106,7 +121,7 @@ export const getJobs = (req, res) => {
 };
 
 export const findPost = (req, res) => {
-    const q = `SELECT p.*, u.id AS userId, username, profilePic FROM posts AS p JOIN users AS u ON (u.id = p.userId) WHERE p.id = ?`;
+    const q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.id = ?`;
     db.query(q, [req.query.id], (err, data) => {
       if (err) return res.status(500).json(err);
       return res.status(200).json(data);
@@ -115,7 +130,7 @@ export const findPost = (req, res) => {
 
 export const addPost = (req, res) => {
     const q =
-      "INSERT INTO posts(`desc`, `img0`, `img1`, `img2`, `img3`, `img4`, `img5`, `img6`, `img7`, `img8`, `img9`, `createdAt`, `userId`, `category`, `flag`, `article`, `url`) VALUES (?)";
+      "INSERT INTO posts(`desc`, `img0`, `img1`, `img2`, `img3`, `img4`, `img5`, `img6`, `img7`, `img8`, `img9`, `createdAt`, `userId`, `category`, `flag`, `article`, `url`, `projectId`, `postType`) VALUES (?)";
     const values = [
       req.body.desc,
       req.body.img0,
@@ -133,7 +148,9 @@ export const addPost = (req, res) => {
       req.body.category,
       req.body.hasFlag,
       req.body.article,
-      req.body.url
+      req.body.url,
+      req.body.projectId || null,
+      req.body.postType || null,
     ];
     db.query(q, [values], (err) => {
       if (err) return res.status(500).json(err);
