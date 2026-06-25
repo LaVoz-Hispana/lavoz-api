@@ -6,8 +6,8 @@ export const getProjects = (req, res) => {
         SELECT p.*, u.id AS userId, username, profilePic
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
-        WHERE p.status = 'open'
-        ORDER BY p.createdAt DESC
+        WHERE p.status IN ('open', 'in_escrow', 'closed')
+        ORDER BY FIELD(p.status, 'open', 'in_escrow', 'closed'), p.createdAt DESC
     `;
     db.query(q, (err, data) => {
         if (err) return res.status(500).json(err);
