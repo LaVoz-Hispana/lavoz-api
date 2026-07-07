@@ -13,6 +13,7 @@ import embedRoutes from "./routes/embeds.js";
 import adRoutes from "./routes/ads.js";
 import projectRoutes from "./routes/projects.js";
 import serviceRoutes from "./routes/services.js";
+import categoryRoutes from "./routes/categories.js";
 import escrowRoutes from "./routes/escrows.js";
 import milestoneRoutes from "./routes/milestones.js";
 import artifactRoutes from "./routes/artifacts.js";
@@ -282,6 +283,7 @@ app.use("/api/embeds", embedRoutes)
 app.use("/api/ads", adRoutes)
 app.use("/api/projects", projectRoutes)
 app.use("/api/services", serviceRoutes)
+app.use("/api/categories", categoryRoutes)
 app.use("/api/escrows", escrowRoutes)
 app.use("/api/escrows/:id/milestones", milestoneRoutes)
 app.use("/api/artifacts", artifactRoutes)
