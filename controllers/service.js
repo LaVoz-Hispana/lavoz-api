@@ -15,11 +15,7 @@ export const getServices = (req, res) => {
         whereClause = "WHERE sub.slug = ?";
         params.push(subcategory);
     } else if (category) {
-        joinClause = `
-            JOIN service_categories AS sc1 ON (sc1.serviceId = s.id)
-            JOIN subcategories AS sub ON (sub.id = sc1.subcategoryId)
-            JOIN categories AS cat ON (cat.id = sub.categoryId)
-        `;
+        joinClause = "";
         whereClause = "WHERE cat.slug = ?";
         params.push(category);
     }
@@ -27,6 +23,7 @@ export const getServices = (req, res) => {
     const q = `
         SELECT DISTINCT s.id, s.userId, u.username, u.profilePic, u.university,
                s.title, s.description, s.skills, s.availability, s.createdAt,
+               cat.slug AS categorySlug, cat.name AS categoryName,
                (
                    SELECT GROUP_CONCAT(sub2.slug SEPARATOR ',')
                    FROM service_categories AS sc2
@@ -35,6 +32,7 @@ export const getServices = (req, res) => {
                ) AS subcategorySlugs
         FROM services AS s
         JOIN users AS u ON (u.id = s.userId)
+        LEFT JOIN categories AS cat ON (cat.id = s.categoryId)
         ${joinClause}
         ${whereClause}
         ORDER BY s.createdAt DESC
@@ -46,15 +44,28 @@ export const getServices = (req, res) => {
 };
 
 export const createService = (req, res) => {
-    const q = "INSERT INTO services(`userId`, `title`, `description`, `skills`, `availability`) VALUES (?)";
-    const values = [
-        req.user.id,
-        req.body.title,
-        req.body.description,
-        req.body.skills ?? null,
-        req.body.availability ?? null,
-    ];
-    db.query(q, [values], (err, data) => {
+    const categoryId = Number(req.body.categoryId);
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+        return res.status(400).json({ error: "A valid service category is required." });
+    }
+
+    db.query(
+        "SELECT categoryId FROM student_service_categories WHERE userId = ? AND categoryId = ?",
+        [req.user.id, categoryId],
+        (categoryErr, categories) => {
+            if (categoryErr) return res.status(500).json(categoryErr);
+            if (categories.length === 0) return res.status(403).json({ error: "Choose a category from your selected services." });
+
+            const q = "INSERT INTO services(`userId`, `title`, `description`, `skills`, `availability`, `categoryId`) VALUES (?)";
+            const values = [
+                req.user.id,
+                req.body.title,
+                req.body.description,
+                req.body.skills ?? null,
+                req.body.availability ?? null,
+                categoryId,
+            ];
+            db.query(q, [values], (err, data) => {
         if (err) return res.status(500).json(err);
         const serviceId = data.insertId;
 
@@ -67,7 +78,9 @@ export const createService = (req, res) => {
             if (err) return res.status(500).json(err);
             return res.status(201).json({ id: serviceId });
         });
-    });
+            });
+        }
+    );
 };
 
 export const deleteService = (req, res) => {

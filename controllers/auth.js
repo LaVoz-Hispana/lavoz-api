@@ -19,16 +19,27 @@ export const register = (req,res)=>{
         const salt = bcrypt.genSaltSync(10);
         const hashedPassword = bcrypt.hashSync(req.body.password, salt);
 
-        const q = "INSERT INTO users (`username`,`email`,`password`,`account_type`) VALUE (?)";
+        const serviceCategoryId = req.body.account_type === "student" && req.body.serviceCategoryId != null && req.body.serviceCategoryId !== ""
+            ? Number(req.body.serviceCategoryId)
+            : null;
 
-        const values = [
-            req.body.username,
-            req.body.email,
-            hashedPassword,
-            req.body.account_type
-        ];
+        if (serviceCategoryId !== null && (!Number.isInteger(serviceCategoryId) || serviceCategoryId <= 0)) {
+            return res.status(400).json("Invalid service category.");
+        }
 
-        db.query(q,[values],(err, data)=>{
+        const createUser = () => {
+            const q = serviceCategoryId === null
+                ? "INSERT INTO users (`username`,`email`,`password`,`account_type`) VALUE (?)"
+                : "INSERT INTO users (`username`,`email`,`password`,`account_type`,`serviceCategoryId`) VALUE (?)";
+            const values = [
+                req.body.username,
+                req.body.email,
+                hashedPassword,
+                req.body.account_type,
+            ];
+            if (serviceCategoryId !== null) values.push(serviceCategoryId);
+
+            db.query(q,[values],(err, data)=>{
             if(err) return res.status(500).json(err);
             const token = createTokens({ id: data.insertId, username: req.body.username, account_type: req.body.account_type });
             res.cookie("accessToken", token, {
@@ -38,6 +49,15 @@ export const register = (req,res)=>{
                 secure: isProduction
             }).status(200).json({ id: data.insertId, token });
             console.log("logged in");
+            });
+        };
+
+        if (serviceCategoryId === null) return createUser();
+
+        db.query("SELECT id FROM categories WHERE id = ?", [serviceCategoryId], (err, categories) => {
+            if (err) return res.status(500).json(err);
+            if (categories.length === 0) return res.status(400).json("Invalid service category.");
+            createUser();
         });
     });
 };

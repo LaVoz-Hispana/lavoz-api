@@ -16,17 +16,13 @@ export const getProjects = (req, res) => {
         whereClause += " AND sc.slug = ?";
         params.push(subcategory);
     } else if (category) {
-        joinClause = `
-            JOIN project_categories AS pc ON (pc.projectId = p.id)
-            JOIN subcategories AS sc ON (sc.id = pc.subcategoryId)
-            JOIN categories AS cat ON (cat.id = sc.categoryId)
-        `;
+        joinClause = "";
         whereClause += " AND cat.slug = ?";
         params.push(category);
     }
 
     const q = `
-        SELECT DISTINCT p.*, u.id AS userId, username, profilePic,
+        SELECT DISTINCT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName,
             (
                 SELECT GROUP_CONCAT(sc2.slug SEPARATOR ',')
                 FROM project_categories AS pc2
@@ -35,6 +31,7 @@ export const getProjects = (req, res) => {
             ) AS subcategorySlugs
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         ${joinClause}
         ${whereClause}
         ORDER BY FIELD(p.status, 'open', 'in_escrow', 'closed'), p.createdAt DESC
@@ -47,9 +44,10 @@ export const getProjects = (req, res) => {
 
 export const getProjectsByLocal = (req, res) => {
     const q = `
-        SELECT p.*, u.id AS userId, username, profilePic
+        SELECT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         WHERE p.userId = ?
         ORDER BY p.createdAt DESC
     `;
@@ -61,7 +59,7 @@ export const getProjectsByLocal = (req, res) => {
 
 export const getProjectById = (req, res) => {
     const q = `
-        SELECT p.*, u.id AS userId, username, profilePic,
+        SELECT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName,
             (
                 SELECT GROUP_CONCAT(sc.slug SEPARATOR ',')
                 FROM project_categories AS pc
@@ -70,6 +68,7 @@ export const getProjectById = (req, res) => {
             ) AS subcategorySlugs
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         WHERE p.id = ?
     `;
     db.query(q, [req.params.id], (err, data) => {
@@ -80,7 +79,16 @@ export const getProjectById = (req, res) => {
 };
 
 export const createProject = (req, res) => {
-    const q = "INSERT INTO projects(`userId`, `title`, `description`, `skills`, `timeline`, `deliverables`, `status`, `createdAt`) VALUES (?)";
+    const categoryId = Number(req.body.categoryId);
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+        return res.status(400).json({ error: "A valid project category is required." });
+    }
+
+    db.query("SELECT id FROM categories WHERE id = ?", [categoryId], (categoryErr, categories) => {
+        if (categoryErr) return res.status(500).json(categoryErr);
+        if (categories.length === 0) return res.status(400).json({ error: "A valid project category is required." });
+
+    const q = "INSERT INTO projects(`userId`, `title`, `description`, `skills`, `timeline`, `deliverables`, `status`, `createdAt`, `categoryId`) VALUES (?)";
     const values = [
         req.user.id,
         req.body.title,
@@ -90,6 +98,7 @@ export const createProject = (req, res) => {
         req.body.deliverables ?? null,
         'open',
         moment(Date.now()).format("YYYY-MM-DD HH:mm:ss"),
+        categoryId,
     ];
     db.query(q, [values], (err, data) => {
         if (err) return res.status(500).json(err);
@@ -104,6 +113,7 @@ export const createProject = (req, res) => {
             if (err) return res.status(500).json(err);
             return res.status(200).json({ id: projectId });
         });
+    });
     });
 };
 
