@@ -118,43 +118,55 @@ export const createProject = (req, res) => {
 };
 
 export const updateProject = (req, res) => {
-    // Verify ownership before updating
+    const categoryId = Number(req.body.categoryId);
+    const title = req.body.title?.trim();
+    const description = req.body.description?.trim();
+
+    if (!title || !description || !Number.isInteger(categoryId) || categoryId <= 0) {
+        return res.status(400).json({ error: "A title, description, and valid project category are required." });
+    }
+
     db.query("SELECT userId FROM projects WHERE id = ?", [req.params.id], (err, data) => {
         if (err) return res.status(500).json(err);
         if (!data || data.length === 0) return res.status(404).json({ error: "Project not found." });
         if (data[0].userId !== req.user.id) return res.status(403).json({ error: "You can only edit your own projects." });
 
-        const q = "UPDATE projects SET `title`=?, `description`=?, `skills`=?, `timeline`=?, `deliverables`=?, `status`=? WHERE id=?";
-        db.query(
-            q,
-            [
-                req.body.title,
-                req.body.description,
-                req.body.skills ?? null,
-                req.body.timeline ?? null,
-                req.body.deliverables ?? null,
-                req.body.status,
-                req.params.id,
-            ],
-            (err, data) => {
-                if (err) return res.status(500).json(err);
-                if (data.affectedRows === 0) return res.status(500).json({ error: "Update failed." });
+        db.query("SELECT id FROM categories WHERE id = ?", [categoryId], (categoryErr, categories) => {
+            if (categoryErr) return res.status(500).json(categoryErr);
+            if (categories.length === 0) return res.status(400).json({ error: "A valid project category is required." });
 
-                if (!Array.isArray(req.body.subcategoryIds)) return res.status(200).json("Updated!");
+            const q = "UPDATE projects SET `title`=?, `description`=?, `skills`=?, `timeline`=?, `deliverables`=?, `categoryId`=? WHERE id=?";
+            db.query(
+                q,
+                [
+                    title,
+                    description,
+                    req.body.skills ?? null,
+                    req.body.timeline ?? null,
+                    req.body.deliverables ?? null,
+                    categoryId,
+                    req.params.id,
+                ],
+                (updateErr, updated) => {
+                    if (updateErr) return res.status(500).json(updateErr);
+                    if (updated.affectedRows === 0) return res.status(500).json({ error: "Update failed." });
 
-                db.query("DELETE FROM project_categories WHERE projectId = ?", [req.params.id], (err) => {
-                    if (err) return res.status(500).json(err);
-                    if (req.body.subcategoryIds.length === 0) return res.status(200).json("Updated!");
+                    if (!Array.isArray(req.body.subcategoryIds)) return res.status(200).json("Updated!");
 
-                    const tagQ = "INSERT INTO project_categories (`projectId`, `subcategoryId`) VALUES ?";
-                    const tagValues = req.body.subcategoryIds.map((subcategoryId) => [req.params.id, subcategoryId]);
-                    db.query(tagQ, [tagValues], (err) => {
-                        if (err) return res.status(500).json(err);
-                        return res.status(200).json("Updated!");
+                    db.query("DELETE FROM project_categories WHERE projectId = ?", [req.params.id], (deleteErr) => {
+                        if (deleteErr) return res.status(500).json(deleteErr);
+                        if (req.body.subcategoryIds.length === 0) return res.status(200).json("Updated!");
+
+                        const tagQ = "INSERT INTO project_categories (`projectId`, `subcategoryId`) VALUES ?";
+                        const tagValues = req.body.subcategoryIds.map((subcategoryId) => [req.params.id, subcategoryId]);
+                        db.query(tagQ, [tagValues], (insertErr) => {
+                            if (insertErr) return res.status(500).json(insertErr);
+                            return res.status(200).json("Updated!");
+                        });
                     });
-                });
-            }
-        );
+                }
+            );
+        });
     });
 };
 

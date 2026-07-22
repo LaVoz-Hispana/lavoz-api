@@ -83,6 +83,47 @@ export const createService = (req, res) => {
     );
 };
 
+export const updateService = (req, res) => {
+    const categoryId = Number(req.body.categoryId);
+    const title = req.body.title?.trim();
+    const description = req.body.description?.trim();
+
+    if (!title || !description || !Number.isInteger(categoryId) || categoryId <= 0) {
+        return res.status(400).json({ error: "A title, description, and valid service category are required." });
+    }
+
+    db.query("SELECT userId FROM services WHERE id = ?", [req.params.id], (serviceErr, services) => {
+        if (serviceErr) return res.status(500).json(serviceErr);
+        if (services.length === 0) return res.status(404).json({ error: "Service not found." });
+        if (services[0].userId !== req.user.id) return res.status(403).json({ error: "Not allowed." });
+
+        db.query(
+            "SELECT categoryId FROM student_service_categories WHERE userId = ? AND categoryId = ?",
+            [req.user.id, categoryId],
+            (categoryErr, categories) => {
+                if (categoryErr) return res.status(500).json(categoryErr);
+                if (categories.length === 0) {
+                    return res.status(403).json({ error: "Choose a category from your selected services." });
+                }
+
+                const q = "UPDATE services SET title = ?, description = ?, skills = ?, availability = ?, categoryId = ? WHERE id = ?";
+                const values = [
+                    title,
+                    description,
+                    req.body.skills || null,
+                    req.body.availability || null,
+                    categoryId,
+                    req.params.id,
+                ];
+                db.query(q, values, (updateErr) => {
+                    if (updateErr) return res.status(500).json(updateErr);
+                    return res.status(200).json({ message: "Service updated." });
+                });
+            }
+        );
+    });
+};
+
 export const deleteService = (req, res) => {
     // Owner or admin may delete
     db.query("SELECT userId FROM services WHERE id = ?", [req.params.id], (err, data) => {
