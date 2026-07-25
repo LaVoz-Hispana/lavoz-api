@@ -32,8 +32,25 @@ import fs from "fs";
 // import imagemin from "imagemin";
 // import mozjpeg from "imagemin-mozjpeg";
 
+dotenv.config();
+
 const app = express();
 const isProduction = process.env.NODE_ENV === "production";
+const defaultProductionOrigins = [
+  "https://www.poststation.link",
+  "https://poststation.link",
+  // Keep the previous production domains working while deployments and links migrate.
+  "https://www.postsstation.com",
+  "https://lavoz-client.vercel.app",
+];
+const configuredProductionOrigins = (process.env.CLIENT_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowedProductionOrigins = [...new Set([
+  ...defaultProductionOrigins,
+  ...configuredProductionOrigins,
+])];
 
 //middlewares
 app.use((req,res,next)=>{
@@ -46,8 +63,7 @@ app.use(express.json())
 app.use(cors({
   origin: (origin, callback) => {
     if (isProduction) {
-      const allowedProd = ["https://www.postsstation.com", "https://lavoz-client.vercel.app"];
-      if (!origin || allowedProd.includes(origin)) {
+      if (!origin || allowedProductionOrigins.includes(origin)) {
         return callback(null, true);
       } else {
         return callback(new Error("Not allowed by CORS (prod)"));
@@ -70,7 +86,6 @@ app.use(cors({
 app.use(cookieParser());
 
 // OPTION 2: MULTER MEMORY STORAGE + S3 BUCKET: WORKS
-dotenv.config();
 const randomImageName = (filename, bytes = 32) => {
     const randomName = crypto.randomBytes(bytes).toString('hex');
     const ext = path.extname(filename).toLowerCase();
