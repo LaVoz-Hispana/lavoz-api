@@ -1,0 +1,7 @@
+CREATE TABLE post_tags (
+  postId INT NOT NULL,
+  userId INT NOT NULL,
+  PRIMARY KEY (postId, userId),
+  FOREIGN KEY (postId) REFERENCES posts(id) ON DELETE CASCADE,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);

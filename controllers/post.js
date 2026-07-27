@@ -51,16 +51,16 @@ export const getPosts = async (req, res) => {
         console.error("Error verifying token:", err);
       } else {
         if (userId && userId !== "undefined") {
-            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.userId = ? ORDER BY p.createdAt DESC LIMIT ${limit}`;
+            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.userId = ? ORDER BY p.createdAt DESC LIMIT ${limit}`;
             values = [userId];
         } else {
-            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
+            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
             values = [];
         }
       }
     });
   } else {
-    q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
+    q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
     values = [];
   }
 
@@ -73,7 +73,8 @@ export const getPosts = async (req, res) => {
 export const getProjectPosts = (req, res) => {
   const { projectId } = req.params;
   const q = `
-    SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle
+    SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription,
+      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers
     FROM posts AS p
     JOIN users AS u ON (u.id = p.userId)
     LEFT JOIN projects AS pr ON (pr.id = p.projectId)
@@ -121,7 +122,7 @@ export const getJobs = (req, res) => {
 };
 
 export const findPost = (req, res) => {
-    const q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.id = ?`;
+    const q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.id = ?`;
     db.query(q, [req.query.id], (err, data) => {
       if (err) return res.status(500).json(err);
       return res.status(200).json(data);
@@ -129,6 +130,16 @@ export const findPost = (req, res) => {
 }
 
 export const addPost = (req, res) => {
+    const projectId = req.body.projectId ? Number(req.body.projectId) : null;
+    const taggedUserIds = Array.isArray(req.body.taggedUserIds)
+      ? [...new Set(req.body.taggedUserIds.map(Number).filter((id) => Number.isInteger(id) && id > 0 && id !== req.user.id))]
+      : [];
+
+    if (req.body.projectId && (!Number.isInteger(projectId) || projectId <= 0)) {
+      return res.status(400).json({ error: "A valid project reference is required." });
+    }
+
+    const insertPost = () => {
     const q =
       "INSERT INTO posts(`desc`, `img0`, `img1`, `img2`, `img3`, `img4`, `img5`, `img6`, `img7`, `img8`, `img9`, `createdAt`, `userId`, `category`, `flag`, `article`, `url`, `projectId`, `postType`) VALUES (?)";
     const values = [
@@ -149,12 +160,41 @@ export const addPost = (req, res) => {
       req.body.hasFlag,
       req.body.article,
       req.body.url,
-      req.body.projectId || null,
+      projectId,
       req.body.postType || null,
     ];
-    db.query(q, [values], (err) => {
+    db.query(q, [values], (err, data) => {
       if (err) return res.status(500).json(err);
-      return res.status(200).json("Post has been created.");
+      if (taggedUserIds.length === 0) return res.status(200).json("Post has been created.");
+
+      const tagValues = taggedUserIds.map((userId) => [data.insertId, userId]);
+      db.query("INSERT INTO post_tags (`postId`, `userId`) VALUES ?", [tagValues], (tagErr) => {
+        if (tagErr) return res.status(500).json(tagErr);
+        return res.status(200).json("Post has been created.");
+      });
+    });
+    };
+
+    if (!projectId) {
+      if (taggedUserIds.length > 0) return res.status(400).json({ error: "Tags require a project reference." });
+      return insertPost();
+    }
+
+    const escrowQ = `
+      SELECT DISTINCT CASE WHEN studentId = ? THEN localId ELSE studentId END AS collaboratorId
+      FROM escrows
+      WHERE projectId = ? AND (studentId = ? OR localId = ?)
+    `;
+    db.query(escrowQ, [req.user.id, projectId, req.user.id, req.user.id], (err, escrows) => {
+      if (err) return res.status(500).json(err);
+      if (!escrows || escrows.length === 0) {
+        return res.status(403).json({ error: "You can only reference projects in your escrows." });
+      }
+      const collaboratorIds = new Set(escrows.map((escrow) => escrow.collaboratorId));
+      if (taggedUserIds.some((userId) => !collaboratorIds.has(userId))) {
+        return res.status(403).json({ error: "You can only tag collaborators from this project escrow." });
+      }
+      return insertPost();
     });
 };
 
