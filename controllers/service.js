@@ -1,13 +1,18 @@
 import { db } from "../connect.js";
 
 export const getServices = (req, res) => {
-    const { category, subcategory } = req.query;
+    const { category, subcategory, userId } = req.query;
 
     const params = [];
     let joinClause = "";
     let whereClause = "";
 
-    if (subcategory) {
+    if (userId) {
+        const parsedUserId = Number(userId);
+        if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) return res.status(400).json({ error: "A valid user id is required." });
+        whereClause = "WHERE s.userId = ?";
+        params.push(parsedUserId);
+    } else if (subcategory) {
         joinClause = `
             JOIN service_categories AS sc1 ON (sc1.serviceId = s.id)
             JOIN subcategories AS sub ON (sub.id = sc1.subcategoryId)
