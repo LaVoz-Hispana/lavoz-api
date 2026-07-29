@@ -29,9 +29,10 @@ export const getCompletedProjectsForUser = (req, res) => {
            p.skills, p.timeline, p.status AS projectStatus,
            s.username AS studentUsername, s.profilePic AS studentProfilePic,
            l.username AS localUsername, l.profilePic AS localProfilePic,
-           r.id AS reviewId, r.reviewerId, r.revieweeId, r.rating, r.commentary,
-           r.createdAt AS reviewCreatedAt,
-           received.id AS receivedReviewId, received.rating AS receivedRating,
+           r.id AS authoredReviewId, r.reviewerId AS authoredReviewerId, r.revieweeId AS authoredRevieweeId,
+           r.rating AS authoredRating, r.commentary AS authoredCommentary, r.createdAt AS authoredReviewCreatedAt,
+           received.id AS receivedReviewId, received.reviewerId AS receivedReviewerId,
+           received.revieweeId AS receivedRevieweeId, received.rating AS receivedRating,
            received.commentary AS receivedCommentary, received.createdAt AS receivedReviewCreatedAt
     FROM escrows e
     JOIN projects p ON p.id = e.projectId
@@ -53,7 +54,11 @@ export const getCompletedProjectsForUser = (req, res) => {
         counterpartId,
         counterpartName: row.studentId === profileUserId ? row.localUsername : row.studentUsername,
         counterpartProfilePic: row.studentId === profileUserId ? row.localProfilePic : row.studentProfilePic,
-        canReview: isParticipant && viewerId !== profileUserId && !row.reviewId,
+        canReview: isParticipant && viewerId !== profileUserId && !row.authoredReviewId,
+        // Only the review authored by the authenticated viewer can be edited.
+        canEditAuthoredReview: Boolean(
+          row.authoredReviewId && Number(row.authoredReviewerId) === Number(viewerId)
+        ),
       };
     });
     return res.status(200).json(projects);
@@ -122,17 +127,17 @@ export const updateReview = (req, res) => {
   }
   if (commentary && commentary.length > 2000) return res.status(400).json({ error: "Commentary must be 2,000 characters or fewer." });
 
-  db.query("SELECT id, reviewerId FROM project_reviews WHERE id = ?", [reviewId], (findErr, reviews) => {
-    if (findErr) return res.status(500).json(findErr);
-    if (!reviews.length) return res.status(404).json({ error: "Review not found." });
-    if (reviews[0].reviewerId !== req.user.id) return res.status(403).json({ error: "You can only edit your own review." });
-    db.query(
-      "UPDATE project_reviews SET rating = ?, commentary = ? WHERE id = ?",
-      [rating, commentary, reviewId],
-      (updateErr) => {
-        if (updateErr) return res.status(500).json(updateErr);
-        return res.status(200).json({ message: "Review updated." });
+  // Include the writer in the UPDATE predicate so authorization is enforced by
+  // the write itself, rather than trusting a prior read.
+  db.query(
+    "UPDATE project_reviews SET rating = ?, commentary = ? WHERE id = ? AND reviewerId = ?",
+    [rating, commentary, reviewId, req.user.id],
+    (updateErr, result) => {
+      if (updateErr) return res.status(500).json(updateErr);
+      if (!result.affectedRows) {
+        return res.status(403).json({ error: "You can only edit your own review." });
       }
-    );
-  });
+      return res.status(200).json({ message: "Review updated." });
+    }
+  );
 };
