@@ -5,7 +5,6 @@ import commentRoutes from "./routes/comments.js";
 import authRoutes from "./routes/auth.js";
 import likeRoutes from "./routes/likes.js";
 import relationshipRoutes from "./routes/relationships.js";
-import ratingRoutes from "./routes/ratings.js";
 import reviewRoutes from "./routes/reviews.js";
 import notifRoutes from "./routes/notifications.js";
 import messageRoutes from "./routes/messages.js";
@@ -291,7 +290,6 @@ app.use("/api/posts", postRoutes)
 app.use("/api/comments", commentRoutes)
 app.use("/api/likes", likeRoutes)
 app.use("/api/relationships", relationshipRoutes)
-app.use("/api/ratings", ratingRoutes)
 app.use("/api/reviews", reviewRoutes)
 app.use("/api/notifications", notifRoutes)
 app.use("/api/messages", messageRoutes)
