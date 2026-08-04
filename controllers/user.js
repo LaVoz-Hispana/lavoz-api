@@ -31,7 +31,14 @@ const attachServiceCategories = (users, callback) => {
 
 export const getUser = (req, res) => {
     const userId = req.params.userId;
-    const q = "SELECT * FROM users WHERE id=?";
+    const q = `SELECT u.*, reviews.reviewCount, reviews.averageRating
+      FROM users u
+      LEFT JOIN (
+        SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+        FROM project_reviews
+        GROUP BY revieweeId
+      ) reviews ON reviews.revieweeId = u.id
+      WHERE u.id = ?`;
 
     db.query(q, [userId], (err, data) => {
       if (err) return res.status(500).json(err);
@@ -48,9 +55,14 @@ export const getAllUsers = (req, res) => {
     const { type } = req.query;
     const allowed = ["student", "local", "admin"];
 
-    const q = type && allowed.includes(type)
-        ? "SELECT * FROM users WHERE account_type = ?"
-        : "SELECT * FROM users";
+    const q = `SELECT u.*, reviews.reviewCount, reviews.averageRating
+      FROM users u
+      LEFT JOIN (
+        SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+        FROM project_reviews
+        GROUP BY revieweeId
+      ) reviews ON reviews.revieweeId = u.id
+      ${type && allowed.includes(type) ? "WHERE u.account_type = ?" : ""}`;
     const params = type && allowed.includes(type) ? [type] : [];
 
     db.query(q, params, (err, data) => {

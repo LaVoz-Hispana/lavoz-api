@@ -22,7 +22,7 @@ export const getProjects = (req, res) => {
     }
 
     const q = `
-        SELECT DISTINCT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName,
+        SELECT DISTINCT p.*, u.id AS userId, username, profilePic, reviews.reviewCount, reviews.averageRating, cat.slug AS categorySlug, cat.name AS categoryName,
             (
                 SELECT GROUP_CONCAT(sc2.slug SEPARATOR ',')
                 FROM project_categories AS pc2
@@ -31,6 +31,11 @@ export const getProjects = (req, res) => {
             ) AS subcategorySlugs
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN (
+            SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+            FROM project_reviews
+            GROUP BY revieweeId
+        ) reviews ON reviews.revieweeId = u.id
         LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         ${joinClause}
         ${whereClause}
@@ -44,9 +49,14 @@ export const getProjects = (req, res) => {
 
 export const getProjectsByLocal = (req, res) => {
     const q = `
-        SELECT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName
+        SELECT p.*, u.id AS userId, username, profilePic, reviews.reviewCount, reviews.averageRating, cat.slug AS categorySlug, cat.name AS categoryName
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN (
+            SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+            FROM project_reviews
+            GROUP BY revieweeId
+        ) reviews ON reviews.revieweeId = u.id
         LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         WHERE p.userId = ?
         ORDER BY p.createdAt DESC
@@ -59,7 +69,7 @@ export const getProjectsByLocal = (req, res) => {
 
 export const getProjectById = (req, res) => {
     const q = `
-        SELECT p.*, u.id AS userId, username, profilePic, cat.slug AS categorySlug, cat.name AS categoryName,
+        SELECT p.*, u.id AS userId, username, profilePic, reviews.reviewCount, reviews.averageRating, cat.slug AS categorySlug, cat.name AS categoryName,
             (
                 SELECT GROUP_CONCAT(sc.slug SEPARATOR ',')
                 FROM project_categories AS pc
@@ -68,6 +78,11 @@ export const getProjectById = (req, res) => {
             ) AS subcategorySlugs
         FROM projects AS p
         JOIN users AS u ON (u.id = p.userId)
+        LEFT JOIN (
+            SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+            FROM project_reviews
+            GROUP BY revieweeId
+        ) reviews ON reviews.revieweeId = u.id
         LEFT JOIN categories AS cat ON (cat.id = p.categoryId)
         WHERE p.id = ?
     `;

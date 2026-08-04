@@ -26,7 +26,7 @@ export const getServices = (req, res) => {
     }
 
     const q = `
-        SELECT DISTINCT s.id, s.userId, u.username, u.profilePic, u.university,
+        SELECT DISTINCT s.id, s.userId, u.username, u.profilePic, u.university, reviews.reviewCount, reviews.averageRating,
                s.title, s.description, s.skills, s.availability, s.createdAt,
                cat.slug AS categorySlug, cat.name AS categoryName,
                (
@@ -37,6 +37,11 @@ export const getServices = (req, res) => {
                ) AS subcategorySlugs
         FROM services AS s
         JOIN users AS u ON (u.id = s.userId)
+        LEFT JOIN (
+            SELECT revieweeId, COUNT(*) AS reviewCount, ROUND(AVG(rating), 1) AS averageRating
+            FROM project_reviews
+            GROUP BY revieweeId
+        ) reviews ON reviews.revieweeId = u.id
         LEFT JOIN categories AS cat ON (cat.id = s.categoryId)
         ${joinClause}
         ${whereClause}
