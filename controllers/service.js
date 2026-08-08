@@ -141,7 +141,7 @@ export const deleteService = (req, res) => {
         if (!data || data.length === 0) return res.status(404).json({ error: "Service not found." });
 
         const isOwner = data[0].userId === req.user.id;
-        const isAdmin = req.user.account_type === "admin";
+        const isAdmin = req.user.is_admin === true;
 
         if (!isOwner && !isAdmin) return res.status(403).json({ error: "Not allowed." });
 

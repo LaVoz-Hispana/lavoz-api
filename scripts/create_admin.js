@@ -47,8 +47,8 @@ db.connect((err) => {
         // Derive a username from the email local-part (e.g. "admin" from "admin@example.com")
         const username = email.split("@")[0].replace(/[^a-zA-Z0-9_]/g, "_");
 
-        const q = "INSERT INTO users (`username`, `email`, `password`, `account_type`) VALUES (?)";
-        const values = [username, email, hashedPassword, "admin"];
+        const q = "INSERT INTO users (`username`, `email`, `password`, `account_type`, `is_admin`) VALUES (?)";
+        const values = [username, email, hashedPassword, "admin", true];
 
         db.query(q, [values], (err, result) => {
             if (err) { console.error("Insert failed:", err.message); db.end(); process.exit(1); }

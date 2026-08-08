@@ -87,7 +87,7 @@ export const getArtifactsByEscrow = (req, res) => {
         const uid = req.user.id;
         const isParticipant = escrow.studentId === uid || escrow.localId === uid;
 
-        if (req.user.account_type !== "admin" && !isParticipant) {
+        if (!req.user.is_admin && !isParticipant) {
             return res.status(403).json({ error: "Forbidden." });
         }
 

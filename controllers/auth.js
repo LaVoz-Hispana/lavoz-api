@@ -41,7 +41,7 @@ export const register = (req,res)=>{
 
             db.query(q,[values],(err, data)=>{
             if(err) return res.status(500).json(err);
-            const token = createTokens({ id: data.insertId, username: req.body.username, account_type: req.body.account_type });
+            const token = createTokens({ id: data.insertId, username: req.body.username, account_type: req.body.account_type, is_admin: false });
             res.cookie("accessToken", token, {
                 maxAge: 15*24*60*60*1000,
                 httpOnly: true,

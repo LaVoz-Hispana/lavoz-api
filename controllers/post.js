@@ -87,6 +87,24 @@ export const getProjectPosts = (req, res) => {
   });
 };
 
+export const getAdminPosts = (req, res) => {
+  const q = `
+    SELECT p.*, u.id AS userId, username, profilePic,
+      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||')
+       FROM post_tags pt JOIN users tu ON tu.id = pt.userId
+       WHERE pt.postId = p.id) AS taggedUsers
+    FROM posts AS p
+    JOIN users AS u ON (u.id = p.userId)
+    WHERE p.isAdminPost = TRUE
+    ORDER BY p.createdAt DESC
+  `;
+
+  db.query(q, (err, data) => {
+    if (err) return res.status(500).json(err);
+    return res.status(200).json(data);
+  });
+};
+
 export const getShorts = (req, res) => {
   const q =
   `SELECT v.*, u.id AS userId, username, profilePic FROM shorts AS v JOIN users AS u ON (u.id = v.userId)
@@ -130,6 +148,7 @@ export const findPost = (req, res) => {
 }
 
 export const addPost = (req, res) => {
+    const isAdminPost = req.isAdminPost === true;
     const projectId = req.body.projectId ? Number(req.body.projectId) : null;
     const taggedUserIds = Array.isArray(req.body.taggedUserIds)
       ? [...new Set(req.body.taggedUserIds.map(Number).filter((id) => Number.isInteger(id) && id > 0 && id !== req.user.id))]
@@ -139,9 +158,13 @@ export const addPost = (req, res) => {
       return res.status(400).json({ error: "A valid project reference is required." });
     }
 
+    if (isAdminPost && (projectId || taggedUserIds.length > 0)) {
+      return res.status(400).json({ error: "Official posts cannot reference projects or tag collaborators." });
+    }
+
     const insertPost = () => {
     const q =
-      "INSERT INTO posts(`desc`, `img0`, `img1`, `img2`, `img3`, `img4`, `img5`, `img6`, `img7`, `img8`, `img9`, `createdAt`, `userId`, `category`, `flag`, `article`, `url`, `projectId`, `postType`) VALUES (?)";
+      "INSERT INTO posts(`desc`, `img0`, `img1`, `img2`, `img3`, `img4`, `img5`, `img6`, `img7`, `img8`, `img9`, `createdAt`, `userId`, `category`, `flag`, `article`, `url`, `projectId`, `postType`, `isAdminPost`) VALUES (?)";
     const values = [
       req.body.desc,
       req.body.img0,
@@ -162,6 +185,7 @@ export const addPost = (req, res) => {
       req.body.url,
       projectId,
       req.body.postType || null,
+      isAdminPost,
     ];
     db.query(q, [values], (err, data) => {
       if (err) return res.status(500).json(err);
@@ -196,6 +220,11 @@ export const addPost = (req, res) => {
       }
       return insertPost();
     });
+};
+
+export const addAdminPost = (req, res) => {
+  req.isAdminPost = true;
+  return addPost(req, res);
 };
 
 export const addShort = (req, res) => {

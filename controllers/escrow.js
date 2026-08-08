@@ -165,10 +165,10 @@ export const getEscrowById = (req, res) => {
 
         const row = data[0];
         const uid  = req.user.id;
-        const role = req.user.account_type;
+        const role = req.user.is_admin ? "admin" : req.user.account_type;
         const isParticipant = row.studentId === uid || row.localId === uid;
 
-        if (role !== "admin" && !isParticipant) {
+        if (!req.user.is_admin && !isParticipant) {
             return res.status(403).json({ error: "Forbidden." });
         }
 
@@ -226,10 +226,10 @@ export const getEscrowEvents = (req, res) => {
 
         const escrow = data[0];
         const uid  = req.user.id;
-        const role = req.user.account_type;
+        const role = req.user.is_admin ? "admin" : req.user.account_type;
         const isParticipant = escrow.studentId === uid || escrow.localId === uid;
 
-        if (role !== "admin" && !isParticipant) {
+        if (!req.user.is_admin && !isParticipant) {
             return res.status(403).json({ error: "Forbidden." });
         }
 
@@ -259,7 +259,7 @@ export const getEscrowEvents = (req, res) => {
 export const updateEscrowStatus = (req, res) => {
     const { status: nextStatus } = req.body;
     const uid  = req.user.id;
-    const role = req.user.account_type;
+    const role = req.user.is_admin ? "admin" : req.user.account_type;
 
     if (!nextStatus) return res.status(400).json({ error: "status is required." });
 

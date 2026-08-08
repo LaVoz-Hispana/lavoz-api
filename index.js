@@ -17,6 +17,7 @@ import categoryRoutes from "./routes/categories.js";
 import escrowRoutes from "./routes/escrows.js";
 import milestoneRoutes from "./routes/milestones.js";
 import artifactRoutes from "./routes/artifacts.js";
+import sponsorRoutes from "./routes/sponsors.js";
 import cors from "cors";
 import multer from "multer";
 import cookieParser from "cookie-parser";
@@ -27,6 +28,7 @@ import cron from 'node-cron';
 import { db } from "./connect.js";
 import path from "path";
 import fs from "fs";
+import { validateToken } from "./jwt.js";
 // import { convertToJpg, isImage } from "./img_process.js";
 // import sharp from "sharp";
 // import imagemin from "imagemin";
@@ -192,6 +194,28 @@ app.post("/api/uploadPost", uploadPost.single("file"), handleMulterError, async 
     }
 });
 
+// Sponsors are uploaded only by admins and are kept separately from post media.
+app.post("/api/uploadSponsor", validateToken(["admin"]), uploadPost.single("file"), handleMulterError, async (req, res) => {
+    try {
+        if (!req.file?.mimetype?.startsWith("image/")) {
+            return res.status(400).json({ error: "Sponsor logos must be image files." });
+        }
+
+        const imageName = randomImageName(req.file.originalname);
+        await s3.send(new PutObjectCommand({
+            Bucket: bucketName,
+            Key: imageName,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+            Tagging: "sponsor=true",
+        }));
+        return res.status(200).json(`https://${bucketName}.s3.amazonaws.com/${imageName}`);
+    } catch (error) {
+        console.error("Error uploading sponsor logo to S3:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
 // FOR STORIES (delete every 48hr)
 app.post("/api/uploadStory", uploadPost.single("file"), handleMulterError, async (req, res) => {
     try {
@@ -302,6 +326,7 @@ app.use("/api/categories", categoryRoutes)
 app.use("/api/escrows", escrowRoutes)
 app.use("/api/escrows/:id/milestones", milestoneRoutes)
 app.use("/api/artifacts", artifactRoutes)
+app.use("/api/sponsors", sponsorRoutes)
 
 const PORT = process.env.PORT || 8800;
 if (isProduction) {
