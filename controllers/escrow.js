@@ -43,11 +43,11 @@ export const createEscrow = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
-                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], (err) => {
+                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], async (err) => {
                     if (err) return res.status(500).json(err);
                     logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                    sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
-                    sendNotification(localId,   req.user.id, "escrow_invited", data.insertId);
+                    await sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
+                    await sendNotification(localId, req.user.id, "escrow_invited", data.insertId);
                     return res.status(201).json({ id: data.insertId });
                 });
             });
@@ -81,10 +81,10 @@ export const createEscrowByLocal = (req, res) => {
 
             db.query(q, [values], (err, data) => {
                 if (err) return res.status(500).json(err);
-                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], (err) => {
+                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], async (err) => {
                     if (err) return res.status(500).json(err);
                     logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                    sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
+                    await sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
                     return res.status(201).json({ id: data.insertId });
                 });
             });
@@ -311,9 +311,9 @@ export const completeEscrow = (req, res) => {
         db.query(
             "UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?",
             [now(), escrow.id],
-            (err) => {
+            async (err) => {
                 if (err) return res.status(500).json(err);
-                sendNotification(escrow.studentId, req.user.id, "escrow_completed", escrow.id);
+                await sendNotification(escrow.studentId, req.user.id, "escrow_completed", escrow.id);
                 return res.status(200).json("Escrow completed.");
             }
         );
@@ -331,9 +331,9 @@ export const reopenEscrow = (req, res) => {
         db.query(
             "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
             [now(), escrow.id],
-            (err) => {
+            async (err) => {
                 if (err) return res.status(500).json(err);
-                sendNotification(escrow.studentId, req.user.id, "escrow_reopened", escrow.id);
+                await sendNotification(escrow.studentId, req.user.id, "escrow_reopened", escrow.id);
                 return res.status(200).json("Escrow reopened.");
             }
         );
@@ -351,10 +351,10 @@ export const acceptEscrow = (req, res) => {
         db.query(
             "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
             [now(), escrow.id],
-            (err) => {
+            async (err) => {
                 if (err) return res.status(500).json(err);
                 logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_accepted" });
-                sendNotification(escrow.localId, req.user.id, "student_accepted", escrow.id);
+                await sendNotification(escrow.localId, req.user.id, "student_accepted", escrow.id);
                 return res.status(200).json("Escrow accepted.");
             }
         );
@@ -374,10 +374,10 @@ export const cancelEscrowByStudent = (req, res) => {
             [now(), escrow.id],
             (err) => {
                 if (err) return res.status(500).json(err);
-                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], (err) => {
+                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], async (err) => {
                     if (err) return res.status(500).json(err);
                     logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
-                    sendNotification(escrow.localId, req.user.id, "student_declined", escrow.id);
+                    await sendNotification(escrow.localId, req.user.id, "student_declined", escrow.id);
                     return res.status(200).json("Escrow declined.");
                 });
             }

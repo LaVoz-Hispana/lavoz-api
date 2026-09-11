@@ -53,7 +53,7 @@ export const submitArtifact = (req, res) => {
                         db.query(
                             "UPDATE escrows SET status = 'submitted', submittedAt = ? WHERE id = ?",
                             [ts, escrowId],
-                            (err) => {
+                            async (err) => {
                                 if (err) return res.status(500).json(err);
                                 logEvent(db, {
                                     escrowId:    parseInt(escrowId),
@@ -63,7 +63,7 @@ export const submitArtifact = (req, res) => {
                                     actorRole:   req.user.account_type,
                                     eventType:   "artifact_submitted",
                                 });
-                                sendNotification(escrow.localId, req.user.id, "artifact_submitted", parseInt(escrowId));
+                                await sendNotification(escrow.localId, req.user.id, "artifact_submitted", parseInt(escrowId));
                                 return res.status(201).json({ id: artifactData.insertId });
                             }
                         );

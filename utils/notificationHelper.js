@@ -1,11 +1,14 @@
-import { db } from "../connect.js";
-import moment from "moment";
+import { withTransaction } from "../services/notificationDb.js";
+import { notificationService } from "../services/notificationService.js";
 
-export const sendNotification = (userTo, userFrom, type, objectId = null) => {
-    if (userTo === userFrom) return;
-    const q = "INSERT INTO notifications (`userTo`, `userFrom`, `type`, `createdAt`, `objectId`) VALUES (?)";
-    const values = [userTo, userFrom, type, moment(Date.now()).format("YYYY-MM-DD HH:mm:ss"), objectId];
-    db.query(q, [values], (err) => {
-        if (err) console.error(`Error creating ${type} notification:`, err);
-    });
-};
+export const createNotification = notificationService({
+  transaction: withTransaction,
+  emailEnabled: () => process.env.NOTIFICATION_EMAIL_ENABLED === "true",
+});
+
+// Existing callback controllers can inspect the returned persistence result.
+export const sendNotification = (userTo, userFrom, type, objectId = null, postId = null) =>
+  createNotification({ userTo, userFrom, type, objectId, postId }).catch(() => {
+    console.error("notification_creation_failed", { type });
+    return { failed: true };
+  });

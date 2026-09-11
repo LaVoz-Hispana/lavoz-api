@@ -1,5 +1,4 @@
 import {db} from "../connect.js";
-import moment from "moment";
 
 export const getNotifications = (req, res) => {
   const q = `SELECT n.*, u.id AS userId, username, profilePic FROM notifications AS n JOIN users AS u ON (u.id = n.userFrom) WHERE userTo = ? ORDER BY createdAt DESC LIMIT 30;`;
@@ -42,8 +41,8 @@ export const getCommentNotif = (req, res) => {
 };
 
 export const clearNotifAlert = (req, res) => {
-    const q = "UPDATE notifications SET new = ? WHERE id = ?";
-    const values = [0, req.body.id];
+    const q = "UPDATE notifications SET new = ? WHERE id = ? AND userTo = ?";
+    const values = [0, req.body.id, req.user.id];
 
     db.query(q, values, (err, data) => {
       if (err) {

@@ -1,5 +1,5 @@
 import {db} from "../connect.js";
-import moment from "moment";
+import { sendNotification } from "../utils/notificationHelper.js";
 
 export const getRelationships = (req,res) => {
     const q = "SELECT followerUserId FROM relationships WHERE followedUserId = ?";
@@ -10,41 +10,27 @@ export const getRelationships = (req,res) => {
 }
 
 export const addRelationship = (req, res) => {
-    const q = "INSERT INTO relationships (`followerUserId`, `followedUserId`) VALUES (?)";
-    const values = [
-        req.user.id,
-        req.body.userId
-    ];
-
-    db.query(q, [values], (err, data) => {
-        if (err) return res.status(500).json(err);
-        sendFollowNotification(req.user.id, req.body.userId, data.insertId);
-        return res.status(200).json("Following");
-    });
+    return follow(req, res, req.body.userId);
 };
 
 export const followUser = (req, res) => {
-    const q = "INSERT INTO relationships (`followerUserId`, `followedUserId`) VALUES (?)";
-    const values = [
-        req.body.followerId,
-        req.body.followedId
-    ];
-
-    db.query(q, [values], (err, data) => {
-        console.log("hello")
-        if (err) return res.status(500).json(err);
-        sendFollowNotification(req.body.followerId, req.body.followedId, data.insertId);
-        return res.status(200).json("Following");
-    });
+    return follow(req, res, req.body.followedId);
 };
 
-const sendFollowNotification = (followerUserId, followedUserId, relationshipId) => {
-    const notificationQ = "INSERT INTO notifications (`userTo`, `userFrom`, `type`, `createdAt`, `objectId`) VALUES (?)";
-    const notificationValues = [followedUserId, followerUserId, 'follow', moment(Date.now()).format("YYYY-MM-DD HH:mm:ss"), relationshipId];
-
-    db.query(notificationQ, [notificationValues], (err, data) => {
-        if (err) console.error("Error creating follow notification:", err);
-        return;
+const follow = (req, res, target) => {
+    const userTo = Number(target);
+    if (!Number.isSafeInteger(userTo) || userTo <= 0 || userTo === Number(req.user.id)) {
+        return res.status(400).json({ error: "Invalid followed user." });
+    }
+    db.query("SELECT id FROM users WHERE id = ?", [userTo], (error, users) => {
+        if (error) return res.status(500).json({ error: "Unable to load user." });
+        if (!users.length) return res.status(404).json({ error: "User not found." });
+        const sql = "INSERT INTO relationships (followerUserId, followedUserId) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM relationships WHERE followerUserId = ? AND followedUserId = ?)";
+        db.query(sql, [req.user.id, userTo, req.user.id, userTo], async (err, data) => {
+            if (err) return res.status(500).json({ error: "Unable to follow user." });
+            if (data.affectedRows) await sendNotification(userTo, req.user.id, "follow", data.insertId);
+            return res.status(200).json("Following");
+        });
     });
 };
 
@@ -60,7 +46,7 @@ export const deleteRelationship = (req, res) => {
 export const unfollowUser = (req, res) => {
     const q = "DELETE FROM relationships WHERE `followerUserId` = ? AND `followedUserId` = ?";
 
-    db.query(q, [req.body.followerId, req.query.followedId], (err, data) => {
+    db.query(q, [req.user.id, req.query.followedId], (err, data) => {
         if (err) return res.status(500).json(err);
         return res.status(200).json("Unfollow");
     });

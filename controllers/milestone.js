@@ -32,10 +32,10 @@ export const createMilestone = (req, res) => {
         const q = "INSERT INTO milestones(`escrowId`, `title`, `description`, `dueDate`, `order`, `status`, `createdAt`, `updatedAt`) VALUES (?)";
         const values = [escrowId, title, description ?? null, dueDate ?? null, order ?? 0, "pending", ts, ts];
 
-        db.query(q, [values], (err, data) => {
+        db.query(q, [values], async (err, data) => {
             if (err) return res.status(500).json(err);
             logEvent(db, { escrowId: parseInt(escrowId), milestoneId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "milestone_added" });
-            sendNotification(escrow.studentId, req.user.id, "milestone_added", parseInt(escrowId));
+            await sendNotification(escrow.studentId, req.user.id, "milestone_added", parseInt(escrowId));
             return res.status(201).json({ id: data.insertId });
         });
     });
@@ -155,11 +155,11 @@ export const approveMilestone = (req, res) => {
 
             const ts = now();
 
-            db.query("UPDATE milestones SET status = 'approved', updatedAt = ? WHERE id = ?", [ts, mid], (err) => {
+            db.query("UPDATE milestones SET status = 'approved', updatedAt = ? WHERE id = ?", [ts, mid], async (err) => {
                 if (err) return res.status(500).json(err);
 
                 logEvent(db, { escrowId: parseInt(escrowId), milestoneId: parseInt(mid), actorId: req.user.id, actorRole: req.user.account_type, eventType: "milestone_approved" });
-                sendNotification(escrow.studentId, req.user.id, "milestone_approved", parseInt(escrowId));
+                await sendNotification(escrow.studentId, req.user.id, "milestone_approved", parseInt(escrowId));
 
                 // Always reset escrow to active — finalization is an explicit action
                 db.query(
@@ -191,10 +191,10 @@ export const finalizeEscrow = (req, res) => {
 
         db.query("UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?", [ts, escrowId], (err) => {
             if (err) return res.status(500).json(err);
-            db.query("UPDATE projects SET status = 'closed' WHERE id = ?", [escrow.projectId], (err) => {
+            db.query("UPDATE projects SET status = 'closed' WHERE id = ?", [escrow.projectId], async (err) => {
                 if (err) return res.status(500).json(err);
                 logEvent(db, { escrowId: parseInt(escrowId), actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_completed" });
-                sendNotification(escrow.studentId, req.user.id, "escrow_completed", parseInt(escrowId));
+                await sendNotification(escrow.studentId, req.user.id, "escrow_completed", parseInt(escrowId));
                 return res.status(200).json({ completed: true });
             });
         });
@@ -226,10 +226,10 @@ export const requestMilestoneChanges = (req, res) => {
             db.query("UPDATE milestones SET status = 'revision_requested', updatedAt = ? WHERE id = ?", [ts, mid], (err) => {
                 if (err) return res.status(500).json(err);
 
-                db.query("UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?", [ts, escrowId], (err) => {
+                db.query("UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?", [ts, escrowId], async (err) => {
                     if (err) return res.status(500).json(err);
                     logEvent(db, { escrowId: parseInt(escrowId), milestoneId: parseInt(mid), actorId: req.user.id, actorRole: req.user.account_type, eventType: "change_requested", note });
-                    sendNotification(escrow.studentId, req.user.id, "change_requested", parseInt(escrowId));
+                    await sendNotification(escrow.studentId, req.user.id, "change_requested", parseInt(escrowId));
                     return res.status(200).json("Changes requested.");
                 });
             });

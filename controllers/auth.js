@@ -1,7 +1,7 @@
 import { db } from "../connect.js";
 import bcrypt from "bcryptjs";
 import { createTokens } from "../jwt.js";
-import nodemailer from "nodemailer";
+import { getMailer, mailFrom } from "../services/mailer.js";
 import crypto from "crypto";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -103,18 +103,9 @@ export const logout = (req,res)=>{
 
 function sendEmail({ recipient_email, OTP }) {
     return new Promise((resolve, reject) => {
-      var transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 587,
-        secure: false,
-        auth: {
-          user: process.env.MY_EMAIL,
-          pass: process.env.APP_PASSWORD,
-        },
-      });
   
       const mail_configs = {
-        from: {name: "PostStation Admin", address: process.env.MY_EMAIL},
+        from: mailFrom(),
         to: recipient_email,
         subject: "PostStation Secure Password Reset",
         html: `<!DOCTYPE html>
@@ -149,15 +140,16 @@ function sendEmail({ recipient_email, OTP }) {
       };
 
       try {
-        transporter.sendMail(mail_configs, function (error, info) {
+        getMailer().sendMail(mail_configs, function (error, info) {
           if (error) {
-            console.log(error);
+            console.error("password_recovery_email_failed");
             return reject({ message: `An error has occured` });
           }
           return resolve({ message: "Email sent succesfuly" });
         });
       } catch (error) {
-        console.error(error)
+        console.error("password_recovery_email_failed");
+        reject({ message: "Unable to send recovery email." });
       }
     });
 }
