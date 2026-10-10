@@ -18,6 +18,7 @@ import escrowRoutes from "./routes/escrows.js";
 import milestoneRoutes from "./routes/milestones.js";
 import artifactRoutes from "./routes/artifacts.js";
 import sponsorRoutes from "./routes/sponsors.js";
+import { resumeRoutes, applicationRoutes } from "./routes/studentApplications.js";
 import cors from "cors";
 import multer from "multer";
 import cookieParser from "cookie-parser";
@@ -327,6 +328,8 @@ app.use("/api/escrows", escrowRoutes)
 app.use("/api/escrows/:id/milestones", milestoneRoutes)
 app.use("/api/artifacts", artifactRoutes)
 app.use("/api/sponsors", sponsorRoutes)
+app.use("/api/resumes", resumeRoutes)
+app.use("/api/applications", applicationRoutes)
 
 const PORT = process.env.PORT || 8800;
 if (isProduction) {

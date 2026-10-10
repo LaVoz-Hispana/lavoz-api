@@ -1,4 +1,5 @@
 export const marketplaceTypes = new Set([
+  "application_submitted", "application_selected", "application_rejected", "application_withdrawn",
   "escrow_invited", "student_accepted", "student_declined", "milestone_added",
   "milestone_approved", "change_requested", "artifact_submitted", "escrow_completed", "escrow_reopened",
 ]);
@@ -11,6 +12,10 @@ export function normalizeLanguage(value) {
 
 const copy = {
   en: {
+    application_submitted: "A student applied to your project",
+    application_selected: "Your project application was selected",
+    application_rejected: "Your project application was not selected",
+    application_withdrawn: "A student withdrew their project application",
     escrow_invited: "You have been invited to an escrow",
     student_accepted: "Your escrow invitation was accepted",
     student_declined: "Your escrow invitation was declined",
@@ -27,6 +32,10 @@ const copy = {
     preferences: "Manage email preferences in Edit Profile",
   },
   es: {
+    application_submitted: "Un estudiante se postuló a tu proyecto",
+    application_selected: "Tu solicitud al proyecto fue seleccionada",
+    application_rejected: "Tu solicitud al proyecto no fue seleccionada",
+    application_withdrawn: "Un estudiante retiró su solicitud al proyecto",
     escrow_invited: "Te han invitado a un escrow",
     student_accepted: "Tu invitación al escrow fue aceptada",
     student_declined: "Tu invitación al escrow fue rechazada",

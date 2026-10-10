@@ -2,6 +2,8 @@ import { db } from "../connect.js";
 import moment from "moment";
 import { logEvent } from "../utils/escrowLogger.js";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { withTransaction } from "../services/notificationDb.js";
+import { directEscrow } from "../services/directEscrow.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -18,79 +20,22 @@ const fetchEscrow = (id, cb) => {
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 // POST /api/escrows — admin only (Escrow Lock)
-export const createEscrow = (req, res) => {
-    const { projectId, studentId } = req.body;
-
-    if (!projectId || !studentId) {
-        return res.status(400).json({ error: "projectId and studentId are required." });
+const createDirectEscrow = (admin) => async (req, res) => {
+    try {
+        const created = await directEscrow(withTransaction)(req.user, req.body, admin);
+        await sendNotification(created.studentId, req.user.id, "escrow_invited", created.id);
+        if (admin) await sendNotification(created.localId, req.user.id, "escrow_invited", created.id);
+        return res.status(201).json({ id: created.id });
+    } catch (error) {
+        const code = error.status ? error.code : "request_failed";
+        return res.status(error.status || 500).json({ code, error: code === "application_selection_required"
+            ? "Select an applicant from the project's Applications section." : code });
     }
-
-    // Derive localId from the project owner — never trust the client for this
-    db.query("SELECT userId, status FROM projects WHERE id = ?", [projectId], (err, projects) => {
-        if (err) return res.status(500).json(err);
-        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found." });
-        if (projects[0].status !== "open") return res.status(400).json({ error: "Project is not open." });
-
-        const localId = projects[0].userId;
-
-        db.query("SELECT id FROM users WHERE id = ? AND account_type = 'student'", [studentId], (err, students) => {
-            if (err) return res.status(500).json(err);
-            if (!students || students.length === 0) return res.status(404).json({ error: "Student not found." });
-
-            const q = "INSERT INTO escrows(`projectId`, `studentId`, `localId`, `adminId`, `status`, `pendingAt`, `createdAt`) VALUES (?)";
-            const ts = now();
-            const values = [projectId, studentId, localId, req.user.id, "pending", ts, ts];
-
-            db.query(q, [values], (err, data) => {
-                if (err) return res.status(500).json(err);
-                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], async (err) => {
-                    if (err) return res.status(500).json(err);
-                    logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                    await sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
-                    await sendNotification(localId, req.user.id, "escrow_invited", data.insertId);
-                    return res.status(201).json({ id: data.insertId });
-                });
-            });
-        });
-    });
 };
+export const createEscrow = createDirectEscrow(true);
 
 // POST /api/escrows/invite — local-initiated escrow
-export const createEscrowByLocal = (req, res) => {
-    const { studentId, projectId } = req.body;
-
-    if (!studentId || !projectId) {
-        return res.status(400).json({ error: "studentId and projectId are required." });
-    }
-
-    // Verify the project belongs to this local
-    db.query("SELECT userId, status FROM projects WHERE id = ?", [projectId], (err, projects) => {
-        if (err) return res.status(500).json(err);
-        if (!projects || projects.length === 0) return res.status(404).json({ error: "Project not found." });
-        if (projects[0].userId !== req.user.id) return res.status(403).json({ error: "You can only invite students to your own projects." });
-        if (projects[0].status !== "open") return res.status(400).json({ error: "Project is not open." });
-
-        // Verify the target user is a student
-        db.query("SELECT id FROM users WHERE id = ? AND account_type = 'student'", [studentId], (err, students) => {
-            if (err) return res.status(500).json(err);
-            if (!students || students.length === 0) return res.status(404).json({ error: "Student not found." });
-
-            const q = "INSERT INTO escrows(`projectId`, `studentId`, `localId`, `adminId`, `status`, `pendingAt`, `createdAt`) VALUES (?)";
-            const ts = now();
-            const values = [projectId, studentId, req.user.id, null, "pending", ts, ts];
-
-            db.query(q, [values], (err, data) => {
-                if (err) return res.status(500).json(err);
-                db.query("UPDATE projects SET status = 'in_escrow' WHERE id = ?", [projectId], async (err) => {
-                    if (err) return res.status(500).json(err);
-                    logEvent(db, { escrowId: data.insertId, actorId: req.user.id, actorRole: req.user.account_type, eventType: "escrow_created" });
-                    await sendNotification(studentId, req.user.id, "escrow_invited", data.insertId);
-                    return res.status(201).json({ id: data.insertId });
-                });
-            });
-        });
-    });
-};
+export const createEscrowByLocal = createDirectEscrow(false);
 
 // GET /api/escrows — admin only, full list
 export const getAllEscrows = (req, res) => {
