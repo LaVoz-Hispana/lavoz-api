@@ -1,19 +1,22 @@
 import express from "express";
 import { addJob, getLatestNews, getTopPosts, getJobs, deleteJob, deleteEvent, addShort, getShorts, deleteShort } from "../controllers/post.js";
 import { getPosts, getProjectPosts, getAdminPosts, findPost, getEvents, addPost, addAdminPost, addEvent, deletePost } from "../controllers/post.js"
-import { validateToken } from "../jwt.js";
+import { optionalToken, validateToken } from "../jwt.js";
+import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
 const router = express.Router()
+router.use(privateNoStore);
 
-router.get("/", getPosts);
-router.get("/find", findPost);
-router.get("/project/:projectId", getProjectPosts);
-router.get("/admin", validateToken(["admin"]), getAdminPosts);
-router.get("/top", getTopPosts);
-router.get("/latestNews", getLatestNews);
-router.get("/shorts", getShorts);
-router.get("/events", getEvents);
-router.get("/jobs", getJobs);
+const viewer = [optionalToken(), refreshViewer];
+router.get("/", viewer, getPosts);
+router.get("/find", viewer, findPost);
+router.get("/project/:projectId", viewer, getProjectPosts);
+router.get("/admin", validateToken(["admin"]), refreshViewer, getAdminPosts);
+router.get("/top", viewer, getTopPosts);
+router.get("/latestNews", viewer, getLatestNews);
+router.get("/shorts", viewer, getShorts);
+router.get("/events", viewer, getEvents);
+router.get("/jobs", viewer, getJobs);
 router.post("/addPost", validateToken(), addPost);
 router.post("/admin", validateToken(["admin"]), addAdminPost);
 router.post("/event", validateToken(), addEvent);

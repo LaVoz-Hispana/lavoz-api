@@ -4,6 +4,7 @@ import { logEvent } from "../utils/escrowLogger.js";
 import { sendNotification } from "../utils/notificationHelper.js";
 import { withTransaction } from "../services/notificationDb.js";
 import { directEscrow } from "../services/directEscrow.js";
+import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
@@ -43,7 +44,8 @@ export const getAllEscrows = (req, res) => {
         SELECT e.*,
             p.title  AS projectTitle,
             s.username AS studentUsername, s.profilePic AS studentProfilePic,
-            l.username AS localUsername,   l.profilePic AS localProfilePic,
+            ${providerDisplayNameSql("l")} AS localUsername, l.profilePic AS localProfilePic,
+            ${providerTypeLabelSql("l")} AS localProviderTypeLabel,
             a.username AS adminUsername
         FROM escrows AS e
         JOIN projects AS p ON (p.id = e.projectId)
@@ -53,7 +55,7 @@ export const getAllEscrows = (req, res) => {
         ORDER BY e.createdAt DESC
     `;
     db.query(q, (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json(data);
     });
 };
@@ -66,7 +68,8 @@ export const getMyEscrows = (req, res) => {
         SELECT e.*,
             p.title  AS projectTitle,
             s.username AS studentUsername, s.profilePic AS studentProfilePic,
-            l.username AS localUsername,   l.profilePic AS localProfilePic
+            ${providerDisplayNameSql("l")} AS localUsername, l.profilePic AS localProfilePic,
+            ${providerTypeLabelSql("l")} AS localProviderTypeLabel
         FROM escrows AS e
         JOIN projects AS p ON (p.id = e.projectId)
         JOIN users    AS s ON (s.id = e.studentId)
@@ -75,7 +78,7 @@ export const getMyEscrows = (req, res) => {
         ORDER BY e.createdAt DESC
     `;
     db.query(q, [userId, userId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json(data);
     });
 };
@@ -90,7 +93,8 @@ export const getEscrowById = (req, res) => {
             p.skills AS projectSkills, p.timeline AS projectTimeline,
             p.deliverables AS projectDeliverables,
             s.username AS studentUsername, s.profilePic AS studentProfilePic,
-            l.username AS localUsername,   l.profilePic AS localProfilePic,
+            ${providerDisplayNameSql("l")} AS localUsername, l.profilePic AS localProfilePic,
+            ${providerTypeLabelSql("l")} AS localProviderTypeLabel,
             a.username AS adminUsername,
             ar.id AS artifact_id, ar.fileUrl AS artifact_fileUrl,
             ar.description AS artifact_description, ar.createdAt AS artifact_createdAt
@@ -105,7 +109,7 @@ export const getEscrowById = (req, res) => {
         WHERE e.id = ?
     `;
     db.query(escrowQ, [escrowId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
 
         const row = data[0];
@@ -138,7 +142,7 @@ export const getEscrowById = (req, res) => {
             ORDER BY m.\`order\` ASC
         `;
         db.query(milestonesQ, [escrowId], (err, milestoneRows) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
 
             escrow.milestones = milestoneRows.map((m) => {
                 const {
@@ -166,7 +170,7 @@ export const getEscrowEvents = (req, res) => {
     const escrowId = req.params.id;
 
     db.query("SELECT studentId, localId FROM escrows WHERE id = ?", [escrowId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
 
         const escrow = data[0];
@@ -182,8 +186,9 @@ export const getEscrowEvents = (req, res) => {
             SELECT
                 ev.id, ev.escrowId, ev.milestoneId, ev.artifactId,
                 ev.actorId, ev.actorRole, ev.eventType, ev.note, ev.createdAt,
-                u.username  AS actorUsername,
+                ${providerDisplayNameSql("u")} AS actorUsername,
                 u.profilePic AS actorProfilePic,
+                ${providerTypeLabelSql("u")} AS actorProviderTypeLabel,
                 m.title     AS milestoneTitle,
                 ar.description AS artifactDescription
             FROM escrow_events AS ev
@@ -194,7 +199,7 @@ export const getEscrowEvents = (req, res) => {
             ORDER BY ev.createdAt ASC
         `;
         db.query(q, [escrowId], (err, events) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             return res.status(200).json(events);
         });
     });
@@ -209,7 +214,7 @@ export const updateEscrowStatus = (req, res) => {
     if (!nextStatus) return res.status(400).json({ error: "status is required." });
 
     fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!escrow) return res.status(404).json({ error: "Escrow not found." });
 
         const current = escrow.status;
@@ -232,10 +237,10 @@ export const updateEscrowStatus = (req, res) => {
             : [nextStatus, escrow.id];
 
         db.query(q, params, (err) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             if (nextStatus === "cancelled") {
                 db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], (err) => {
-                    if (err) return res.status(500).json(err);
+                    if (err) return res.status(500).json({ code: "request_failed" });
                     return res.status(200).json("Status updated.");
                 });
             } else {
@@ -248,7 +253,7 @@ export const updateEscrowStatus = (req, res) => {
 // PUT /api/escrows/:id/complete — local marks work as complete (submitted → completed)
 export const completeEscrow = (req, res) => {
     fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!escrow) return res.status(404).json({ error: "Escrow not found." });
         if (escrow.localId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
         if (escrow.status !== "submitted") return res.status(409).json({ error: "Only submitted escrows can be completed." });
@@ -257,7 +262,7 @@ export const completeEscrow = (req, res) => {
             "UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?",
             [now(), escrow.id],
             async (err) => {
-                if (err) return res.status(500).json(err);
+                if (err) return res.status(500).json({ code: "request_failed" });
                 await sendNotification(escrow.studentId, req.user.id, "escrow_completed", escrow.id);
                 return res.status(200).json("Escrow completed.");
             }
@@ -268,7 +273,7 @@ export const completeEscrow = (req, res) => {
 // PUT /api/escrows/:id/reopen — local sends back for revision (submitted → active)
 export const reopenEscrow = (req, res) => {
     fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!escrow) return res.status(404).json({ error: "Escrow not found." });
         if (escrow.localId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
         if (escrow.status !== "submitted") return res.status(409).json({ error: "Only submitted escrows can be reopened." });
@@ -277,7 +282,7 @@ export const reopenEscrow = (req, res) => {
             "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
             [now(), escrow.id],
             async (err) => {
-                if (err) return res.status(500).json(err);
+                if (err) return res.status(500).json({ code: "request_failed" });
                 await sendNotification(escrow.studentId, req.user.id, "escrow_reopened", escrow.id);
                 return res.status(200).json("Escrow reopened.");
             }
@@ -288,7 +293,7 @@ export const reopenEscrow = (req, res) => {
 // PUT /api/escrows/:id/accept — student accepts a pending invitation
 export const acceptEscrow = (req, res) => {
     fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!escrow) return res.status(404).json({ error: "Escrow not found." });
         if (escrow.studentId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
         if (escrow.status !== "pending") return res.status(409).json({ error: "Only pending escrows can be accepted." });
@@ -297,7 +302,7 @@ export const acceptEscrow = (req, res) => {
             "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
             [now(), escrow.id],
             async (err) => {
-                if (err) return res.status(500).json(err);
+                if (err) return res.status(500).json({ code: "request_failed" });
                 logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_accepted" });
                 await sendNotification(escrow.localId, req.user.id, "student_accepted", escrow.id);
                 return res.status(200).json("Escrow accepted.");
@@ -309,7 +314,7 @@ export const acceptEscrow = (req, res) => {
 // PUT /api/escrows/:id/cancel — student declines a pending invitation
 export const cancelEscrowByStudent = (req, res) => {
     fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!escrow) return res.status(404).json({ error: "Escrow not found." });
         if (escrow.studentId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
         if (escrow.status !== "pending") return res.status(409).json({ error: "Only pending escrows can be declined." });
@@ -318,9 +323,9 @@ export const cancelEscrowByStudent = (req, res) => {
             "UPDATE escrows SET status = 'cancelled', resolvedAt = ? WHERE id = ?",
             [now(), escrow.id],
             (err) => {
-                if (err) return res.status(500).json(err);
+                if (err) return res.status(500).json({ code: "request_failed" });
                 db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], async (err) => {
-                    if (err) return res.status(500).json(err);
+                    if (err) return res.status(500).json({ code: "request_failed" });
                     logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
                     await sendNotification(escrow.localId, req.user.id, "student_declined", escrow.id);
                     return res.status(200).json("Escrow declined.");

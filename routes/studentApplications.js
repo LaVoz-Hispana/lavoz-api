@@ -43,6 +43,7 @@ resumeRoutes.get("/:id/download", handle(async (req, res) => {
   await pipeline(object.Body, res);
 }));
 applicationRoutes.get("/mine", handle(async (req, res) => res.json(await service.mine(req.user, req.query.projectId))));
+applicationRoutes.get("/admin/projects/:projectId", handle(async (req, res) => res.json(await service.forProjectAdmin(req.user, req.params.projectId))));
 applicationRoutes.get("/projects/:projectId", handle(async (req, res) => res.json(await service.forProject(req.user, req.params.projectId))));
 applicationRoutes.post("/projects/:projectId", handle(async (req, res) => res.status(201).json(await service.submit(req.user, req.params.projectId, req.body))));
 applicationRoutes.put("/projects/:projectId/:id/:action", handle(async (req, res) => res.json(await service.resolve(req.user, req.params.projectId, req.params.id, req.params.action))));

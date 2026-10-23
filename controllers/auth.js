@@ -3,16 +3,24 @@ import bcrypt from "bcryptjs";
 import { createTokens } from "../jwt.js";
 import { getMailer, mailFrom } from "../services/mailer.js";
 import crypto from "crypto";
+import { emptyProviderProfile, providerDisplayName, providerTypeLabel, validateProviderProfile, withProviderIdentity } from "../services/providerIdentity.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
 export const register = (req,res)=>{
+    if (!["student", "local"].includes(req.body.account_type)) {
+        return res.status(400).json({ code: "invalid_account_type", error: "Choose a Student or Project Provider account." });
+    }
+    const providerResult = req.body.account_type === "local"
+        ? validateProviderProfile(req.body)
+        : { value: emptyProviderProfile };
+    if (providerResult.error) return res.status(400).json(providerResult.error);
     // CHECK IF USER EXITS
 
     const q = "SELECT * FROM users WHERE email = ?" // ? provides extra security instead of req.body etc.
     
     db.query(q,[req.body.email], (err,data)=>{
-        if(err) return res.status(500).json(err)
+        if(err) return res.status(500).json({ code: "request_failed" })
         if(data.length) return res.status(409).json("User already exists!")
         // CREATE A NEW USER   
         // hash the password
@@ -29,8 +37,8 @@ export const register = (req,res)=>{
 
         const createUser = () => {
             const q = serviceCategoryId === null
-                ? "INSERT INTO users (`username`,`email`,`password`,`account_type`) VALUE (?)"
-                : "INSERT INTO users (`username`,`email`,`password`,`account_type`,`serviceCategoryId`) VALUE (?)";
+                ? "INSERT INTO users (`username`,`email`,`password`,`account_type`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)"
+                : "INSERT INTO users (`username`,`email`,`password`,`account_type`,`serviceCategoryId`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)";
             const values = [
                 req.body.username,
                 req.body.email,
@@ -38,16 +46,31 @@ export const register = (req,res)=>{
                 req.body.account_type,
             ];
             if (serviceCategoryId !== null) values.push(serviceCategoryId);
+            values.push(
+                providerResult.value.provider_type,
+                providerResult.value.contact_person_name,
+                providerResult.value.company_name,
+                providerResult.value.organization_name,
+                providerResult.value.provider_profile_complete,
+            );
 
             db.query(q,[values],(err, data)=>{
-            if(err) return res.status(500).json(err);
+            if(err) return res.status(500).json({ code: "request_failed" });
             const token = createTokens({ id: data.insertId, username: req.body.username, account_type: req.body.account_type, is_admin: false });
             res.cookie("accessToken", token, {
                 maxAge: 15*24*60*60*1000,
                 httpOnly: true,
                 sameSite: isProduction ? "none" : "lax",
                 secure: isProduction
-            }).status(200).json({ id: data.insertId, token });
+            }).status(200).json({
+                id: data.insertId,
+                token,
+                account_type: req.body.account_type,
+                ...providerResult.value,
+                providerDisplayName: providerDisplayName({ ...providerResult.value, account_type: req.body.account_type, username: req.body.username }),
+                providerTypeLabel: providerTypeLabel(providerResult.value.provider_type),
+                providerProfileComplete: Boolean(providerResult.value.provider_profile_complete),
+            });
             console.log("logged in");
             });
         };
@@ -55,7 +78,7 @@ export const register = (req,res)=>{
         if (serviceCategoryId === null) return createUser();
 
         db.query("SELECT id FROM categories WHERE id = ?", [serviceCategoryId], (err, categories) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             if (categories.length === 0) return res.status(400).json("Invalid service category.");
             createUser();
         });
@@ -67,7 +90,7 @@ export const login = (req,res)=>{
     const q = "SELECT * FROM users WHERE email = ?";
 
     db.query(q,[req.body.email], (err,data)=>{
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (data.length === 0) return res.status(404).json("User not found!");
 
         const checkPassword = bcrypt.compareSync(
@@ -85,7 +108,7 @@ export const login = (req,res)=>{
             httpOnly: true,
             sameSite: isProduction ? "none" : "lax",
             secure: isProduction
-        }).status(200).json({ ...others, token });
+        }).status(200).json({ ...withProviderIdentity(others), token });
         console.log("logged in");
     });
     
@@ -166,14 +189,14 @@ export const sendRecoveryEmail = (req, res) => {
 export const resetPassword = (req, res) => {
   const q = "SELECT * FROM users WHERE email = ?";
   db.query(q,[req.body.email], (err,data)=>{
-    if (err) return res.status(500).json(err);
+    if (err) return res.status(500).json({ code: "request_failed" });
     if (data.length === 0) return res.status(404).json("User not found!");
     else {
       const salt = bcrypt.genSaltSync(10);
       const hashedPassword = bcrypt.hashSync(req.body.password, salt);
       const q = "UPDATE users SET password = ? WHERE email = ?"
       db.query(q,[hashedPassword, req.body.email],(err)=>{
-        if(err) return res.status(500).json(err)
+        if(err) return res.status(500).json({ code: "request_failed" })
         return res.status(200).json("Password has been updated.")
       });
     }

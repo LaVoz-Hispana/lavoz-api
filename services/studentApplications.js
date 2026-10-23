@@ -8,6 +8,48 @@ const applicationColumns = `a.id, a.projectId, a.studentId, a.resumeId, a.note, 
   (SELECT e.id FROM escrows e WHERE e.projectId = a.projectId AND e.studentId = a.studentId
     ORDER BY e.id DESC LIMIT 1) AS escrowId`;
 
+const applicantColumns = `u.username AS studentUsername, u.name AS studentName,
+  u.profilePic AS studentProfilePic, u.city AS studentCity, u.university AS studentUniversity,
+  u.major AS studentMajor, u.grad_year AS studentGradYear, u.bio AS studentBio,
+  u.skills AS studentSkills`;
+
+function studentApplicationDto(row) {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    resumeId: row.resumeId,
+    note: row.note,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    resolvedAt: row.resolvedAt,
+    resumeLabel: row.resumeLabel,
+    originalFileName: row.originalFileName,
+    mimeType: row.mimeType,
+    projectTitle: row.projectTitle,
+    projectStatus: row.projectStatus,
+    escrowId: row.escrowId,
+  };
+}
+
+function reviewerApplicationDto(row) {
+  return {
+    ...studentApplicationDto(row),
+    applicant: {
+      id: row.studentId,
+      username: row.studentUsername,
+      name: row.studentName,
+      profilePic: row.studentProfilePic,
+      city: row.studentCity,
+      university: row.studentUniversity,
+      major: row.studentMajor,
+      gradYear: row.studentGradYear,
+      bio: row.studentBio,
+      skills: row.studentSkills,
+    },
+  };
+}
+
 export function positiveId(value) {
   if (!/^[1-9]\d*$/.test(String(value)) || !Number.isSafeInteger(Number(value))) throw problem("invalid_id");
   return Number(value);
@@ -20,6 +62,10 @@ function labelValue(value) {
 
 function requireRole(actor, role) {
   if (actor.account_type !== role) throw problem("forbidden", 403);
+}
+
+function requireAdmin(actor) {
+  if (!actor.is_admin && actor.account_type !== "admin") throw problem("forbidden", 403);
 }
 
 export function studentApplications({ transaction, storage, emailEnabled = () => false }) {
@@ -47,6 +93,21 @@ export function studentApplications({ transaction, storage, emailEnabled = () =>
   };
 
   return {
+    async closeProject(actor, projectId) {
+      requireRole(actor, "local");
+      return transaction(async (query) => {
+        const project = await projectForUpdate(query, projectId);
+        if (Number(project.userId) !== Number(actor.id)) throw problem("forbidden", 403);
+        ensureOpen(project);
+        const activeEscrows = await query("SELECT id FROM escrows WHERE projectId = ? AND status <> 'cancelled' LIMIT 1", [project.id]);
+        if (activeEscrows.length) throw problem("project_not_open", 409);
+        const submitted = await query("SELECT id, studentId FROM project_applications WHERE projectId = ? AND status = 'submitted' FOR UPDATE", [project.id]);
+        await query("UPDATE project_applications SET status = 'rejected', resolvedAt = NOW() WHERE projectId = ? AND status = 'submitted'", [project.id]);
+        await query("UPDATE projects SET status = 'closed' WHERE id = ?", [project.id]);
+        for (const application of submitted) await notify(query, application.studentId, actor, "application_rejected", project.id, application.id);
+        return { id: project.id, status: "closed" };
+      });
+    },
     async listResumes(actor) {
       requireRole(actor, "student");
       return transaction((query) => query(`SELECT ${resumeColumns},
@@ -150,19 +211,35 @@ export function studentApplications({ transaction, storage, emailEnabled = () =>
     },
     async mine(actor, projectId) {
       requireRole(actor, "student");
-      return transaction((query) => query(`SELECT ${applicationColumns} FROM project_applications a
-        JOIN student_resumes r ON r.id = a.resumeId JOIN projects p ON p.id = a.projectId
-        WHERE a.studentId = ? ${projectId ? "AND a.projectId = ?" : ""} ORDER BY a.createdAt DESC, a.id DESC`,
-      projectId ? [actor.id, positiveId(projectId)] : [actor.id]));
+      return transaction(async (query) => {
+        const rows = await query(`SELECT ${applicationColumns} FROM project_applications a
+          JOIN student_resumes r ON r.id = a.resumeId JOIN projects p ON p.id = a.projectId
+          WHERE a.studentId = ? ${projectId ? "AND a.projectId = ?" : ""} ORDER BY a.createdAt DESC, a.id DESC`,
+        projectId ? [actor.id, positiveId(projectId)] : [actor.id]);
+        return rows.map(studentApplicationDto);
+      });
     },
     async forProject(actor, projectId) {
       requireRole(actor, "local");
       return transaction(async (query) => {
         const [project] = await query("SELECT userId FROM projects WHERE id = ?", [positiveId(projectId)]);
         if (!project || Number(project.userId) !== Number(actor.id)) throw problem("forbidden", 403);
-        return query(`SELECT ${applicationColumns}, u.username AS studentUsername FROM project_applications a
+        const rows = await query(`SELECT ${applicationColumns}, ${applicantColumns} FROM project_applications a
           JOIN student_resumes r ON r.id = a.resumeId JOIN projects p ON p.id = a.projectId
           JOIN users u ON u.id = a.studentId WHERE a.projectId = ? ORDER BY a.createdAt, a.id`, [projectId]);
+        return rows.map(reviewerApplicationDto);
+      });
+    },
+    async forProjectAdmin(actor, projectId) {
+      requireAdmin(actor);
+      return transaction(async (query) => {
+        const id = positiveId(projectId);
+        const [project] = await query("SELECT id FROM projects WHERE id = ?", [id]);
+        if (!project) throw problem("project_not_found", 404);
+        const rows = await query(`SELECT ${applicationColumns}, ${applicantColumns} FROM project_applications a
+          JOIN student_resumes r ON r.id = a.resumeId JOIN projects p ON p.id = a.projectId
+          JOIN users u ON u.id = a.studentId WHERE a.projectId = ? ORDER BY a.createdAt, a.id`, [id]);
+        return rows.map(reviewerApplicationDto);
       });
     },
     async resolve(actor, projectId, applicationId, action) {

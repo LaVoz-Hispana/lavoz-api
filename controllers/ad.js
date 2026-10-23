@@ -1,23 +1,31 @@
 import {db} from "../connect.js"
 import moment from "moment"
+import { redactStudentIdentity } from "../services/studentPrivacy.js";
+import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
+
+const visibleAds = (rows, viewer) => rows.map((row) => redactStudentIdentity(row, viewer));
 
 export const getPendingAds = async (req, res) => {
     const q =
-      "SELECT a.*, u.id AS userId, username, profilePic FROM ads AS a JOIN users AS u ON (u.id = a.userId) WHERE a.approved = false ORDER BY a.createdAt DESC"
+      `SELECT a.*, u.id AS userId, ${providerDisplayNameSql("u")} AS username, profilePic,
+       ${providerTypeLabelSql("u")} AS providerTypeLabel, u.provider_type, u.account_type AS authorAccountType
+       FROM ads AS a JOIN users AS u ON (u.id = a.userId) WHERE a.approved = false ORDER BY a.createdAt DESC`
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleAds(data, req.user));
     });
 };
 
 export const getApprovedAds = async (req, res) => {
     const q =
-      "SELECT a.*, u.id AS userId, username, profilePic FROM ads AS a JOIN users AS u ON (u.id = a.userId) WHERE a.approved = true ORDER BY a.createdAt DESC"
+      `SELECT a.*, u.id AS userId, ${providerDisplayNameSql("u")} AS username, profilePic,
+       ${providerTypeLabelSql("u")} AS providerTypeLabel, u.provider_type, u.account_type AS authorAccountType
+       FROM ads AS a JOIN users AS u ON (u.id = a.userId) WHERE a.approved = true ORDER BY a.createdAt DESC`
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleAds(data, req.user));
     });
 };
 
@@ -44,7 +52,7 @@ export const postAd = (req, res) => {
     ];
 
     db.query(q, [values], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       return res.status(200).json("Ad has been created.");
     });
 };
@@ -55,7 +63,7 @@ export const approveAd = (req, res) => {
 
     db.query(q, values, (err, data) => {
       if (err) {
-          console.log("Error updating ad:", err);
+          console.log("Error updating ad:");
           return res.status(500).json("Error updating ad.");
       }
       console.log("Ad updated successfully!");
@@ -82,7 +90,7 @@ const convertToPost = (desc, img0, img1, img2, img3, img4, img5, img6, img7, img
     ];
 
     db.query(q, [values], (err, data) => {
-      if (err) console.error("Error creating post from ad.", err);
+      if (err) console.error("Error creating post from ad.");
       return;
     });
 };
@@ -90,7 +98,7 @@ const convertToPost = (desc, img0, img1, img2, img3, img4, img5, img6, img7, img
 const deleteAd = (id) => {
     const q = "DELETE FROM ads WHERE id=?";
     db.query(q, id, (err, data) => {
-      if (err) console.log("Error deleting add.", err);
+      if (err) console.log("Error deleting add.");
       if(data.affectedRows>0) return;
     });
 };

@@ -1,20 +1,26 @@
 import {db} from "../connect.js";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { canViewStudentProfile } from "../services/studentPrivacy.js";
+
+const visibleReactions = (rows, viewer) => rows.map(({ account_type, ...row }) => ({
+    ...row,
+    userId: account_type === "student" && !canViewStudentProfile(viewer, row.userId) ? null : row.userId,
+}));
 
 export const getLikes = (req,res) => {
-    const q = "SELECT userId, reaction FROM likes WHERE postId = ?";
+    const q = "SELECT l.userId, l.reaction, u.account_type FROM likes l JOIN users u ON u.id = l.userId WHERE l.postId = ?";
 
     db.query(q, [req.query.postId], (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json(data);
+    if (err) return res.status(500).json({ code: "request_failed" });
+    return res.status(200).json(visibleReactions(data, req.user));
     });
 };
 
 export const getShortLikes = (req, res) => {
-    const q = "SELECT userId, reaction FROM short_likes WHERE shortId = ?";
+    const q = "SELECT l.userId, l.reaction, u.account_type FROM short_likes l JOIN users u ON u.id = l.userId WHERE l.shortId = ?";
     db.query(q, [req.query.shortId], (err, data) => {
-        if (err) return res.status(500).json(err);
-        return res.status(200).json(data);
+        if (err) return res.status(500).json({ code: "request_failed" });
+        return res.status(200).json(visibleReactions(data, req.user));
     });
 }
 
@@ -23,7 +29,7 @@ export const getReaction = (req,res) => {
     const reactionId = parseInt(req.query.reactionId, 10);
 
     db.query(q, [reactionId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json(data);
     });
 }
@@ -38,7 +44,7 @@ export const addLike = (req, res) => {
         const values = [req.user.id, postId, req.body.reaction];
 
         db.query(q, [values], async (err, data) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             await sendNotification(posts[0].userId, req.user.id, "reaction", data.insertId, postId);
             return res.status(200).json("Post has been liked.");
         });
@@ -54,7 +60,7 @@ export const addShortLike = (req, res) => {
     ];
 
     db.query(q, [values], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json("Short has been liked.");
     });
 };
@@ -63,7 +69,7 @@ export const deleteLike = (req, res) => {
     const q = "DELETE FROM likes WHERE `userId` = ? AND `postId` = ?";
 
     db.query(q, [req.user.id, req.query.postId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json("Post has been disliked.");
     });
 };
@@ -72,7 +78,7 @@ export const deleteShortLike = (req, res) => {
     const q = "DELETE FROM short_likes WHERE `userId` = ? AND `shortId` = ?";
 
     db.query(q, [req.user.id, req.query.shortId], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json("Short has been disliked.");
     });
 };

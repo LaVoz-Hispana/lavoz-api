@@ -131,6 +131,33 @@ test("student application query is always filtered to the authenticated account"
   assert.equal(calls[0].sql.includes("objectKey"), false);
 });
 
+test("student application DTO excludes identities and private file references even if the query returns extra fields", async () => {
+  const { service } = fixture({ query: (sql) => sql.includes("WHERE a.studentId = ?") ? [{
+    ...application, studentUsername: "Private Name", studentProfilePic: "photo", objectKey: "private/key",
+    resumeLabel: "Engineering", note: "My note", createdAt: "2026-10-01", updatedAt: "2026-10-02",
+  }] : undefined });
+  const [result] = await service.mine(student, 5);
+  for (const key of ["studentId", "studentUsername", "studentProfilePic", "objectKey", "applicant"]) assert.equal(key in result, false);
+  assert.equal(result.note, "My note");
+  assert.equal(result.resumeLabel, "Engineering");
+  assert.equal(result.updatedAt, "2026-10-02");
+});
+
+test("only the owner or an explicitly authorized admin can retrieve applicant identities", async () => {
+  const { service, calls } = fixture({ query: (sql) => {
+    if (sql.startsWith("SELECT id FROM projects")) return [{ id: 5 }];
+    if (sql.includes("JOIN users u ON u.id = a.studentId")) return [{ ...application, studentUsername: "Applicant", objectKey: "private/key" }];
+  } });
+  for (const actor of [student, provider]) await assert.rejects(service.forProjectAdmin(actor, 5), { status: 403 });
+  await assert.rejects(service.forProject(student, 5), { status: 403 });
+  assert.equal(calls.length, 0);
+  for (const result of [await service.forProject(provider, 5), await service.forProjectAdmin({ id: 90, account_type: "admin" }, 5)]) {
+    assert.equal(result[0].applicant.username, "Applicant");
+    assert.equal(result[0].applicant.id, student.id);
+    assert.equal("objectKey" in result[0], false);
+  }
+});
+
 test("resume downloads permit owner/admin and only the provider with the attached resume", async () => {
   for (const actor of [student, { id: 90, account_type: "local", is_admin: true }, { id: 91, account_type: "admin" }]) {
     const { service, storageCalls } = fixture();
@@ -192,4 +219,35 @@ test("legacy escrow invitations cannot bypass submitted applications", async () 
   await assert.rejects(directEscrow(transaction)(provider, { projectId: 5, studentId: 2 }), { code: "application_selection_required" });
   assert.match(calls[0].sql, /FOR UPDATE/);
   assert.equal(calls.some((c) => /^(INSERT|UPDATE)/.test(c.sql)), false);
+});
+
+
+test("closing a project atomically rejects submitted applications and notifies their owners", async () => {
+  const { service, calls } = fixture();
+  assert.deepEqual(await service.closeProject(provider, 5), { id: 5, status: "closed" });
+  assert.match(calls[0].sql, /FOR UPDATE/);
+  assert.ok(calls.some((call) => call.sql.includes("SET status = 'closed'")));
+  assert.ok(calls.some((call) => call.sql.includes("SET status = 'rejected'")));
+  assert.ok(calls.some((call) => call.sql.startsWith("INSERT INTO notifications") && call.values[0] === 4 && call.values[2] === "application_rejected"));
+});
+
+test("closing a project rejects outsiders, students, and projects already in escrow", async () => {
+  for (const actor of [student, { ...provider, id: 99 }]) {
+    const { service, calls } = fixture();
+    await assert.rejects(service.closeProject(actor, 5), { status: 403 });
+    assert.equal(calls.some((call) => /^(INSERT|UPDATE)/.test(call.sql)), false);
+  }
+  const { service } = fixture({ project: { ...project, status: "in_escrow" } });
+  await assert.rejects(service.closeProject(provider, 5), { code: "project_not_open" });
+});
+
+test("closing a project rolls back if notification persistence fails", async (t) => {
+  const { query, calls } = fixture({ query: (sql) => { if (sql.startsWith("INSERT INTO notifications")) throw new Error("notification failed"); } });
+  t.mock.method(notificationPool, "getConnection", (callback) => callback(null, {
+    query(sql, values, done) { query(sql, values).then((rows) => done(null, rows), done); }, release() {},
+  }));
+  const service = studentApplications({ transaction: withTransaction });
+  await assert.rejects(service.closeProject(provider, 5), /notification failed/);
+  assert.equal(calls.at(-1).sql, "ROLLBACK");
+  assert.equal(calls.some((call) => call.sql === "COMMIT"), false);
 });

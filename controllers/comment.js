@@ -1,14 +1,17 @@
 import {db} from "../connect.js";
 import moment from "moment";
 import { sendNotification } from "../utils/notificationHelper.js";
+import { redactStudentIdentity } from "../services/studentPrivacy.js";
+import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
 
 export const getComments = (req, res) => {
-    const q = `SELECT c.*, u.id AS userId, username, profilePic FROM comments AS c JOIN users AS u ON (u.id = c.userId)
+    const q = `SELECT c.*, u.id AS userId, ${providerDisplayNameSql("u")} AS username, profilePic,
+      ${providerTypeLabelSql("u")} AS providerTypeLabel, u.provider_type, u.account_type AS authorAccountType FROM comments AS c JOIN users AS u ON (u.id = c.userId)
       WHERE c.postId = ? ORDER BY c.createdAt DESC`;
 
     db.query(q, [req.query.postId], (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(data.map((row) => redactStudentIdentity(row, req.user)));
     });
 };
 
@@ -17,7 +20,7 @@ export const getCommentDesc = (req, res) => {
   const commentId = parseInt(req.query.commentId, 10);
 
   db.query(q, [commentId], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       return res.status(200).json(data);
   });
 }
@@ -38,7 +41,7 @@ export const addComment = (req, res) => {
     ];
 
     db.query(q, [values], async (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       const commentId = data.insertId;
       await sendNotification(posts[0].userId, req.user.id, "comment", commentId, postId);
       return res.status(200).json("Comment has been created.");

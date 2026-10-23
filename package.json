@@ -30,6 +30,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "requirements:check": "node scripts/check-requirements.mjs",
     "test": "node --test",
     "worker:email": "node workers/email.js",
     "start": "nodemon index.js"

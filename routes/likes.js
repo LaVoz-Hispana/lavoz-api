@@ -1,11 +1,13 @@
 import express from "express";
 import { getLikes, getShortLikes, getReaction, addLike, addShortLike, deleteLike, deleteShortLike } from "../controllers/like.js";
-import { validateToken } from "../jwt.js";
+import { optionalToken, validateToken } from "../jwt.js";
+import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
 const router = express.Router()
+router.use(privateNoStore);
 
-router.get("/", getLikes);
-router.get("/shorts", getShortLikes);
+router.get("/", optionalToken(), refreshViewer, getLikes);
+router.get("/shorts", optionalToken(), refreshViewer, getShortLikes);
 router.get("/single", getReaction);
 router.post("/", validateToken(), addLike);
 router.post("/shorts", validateToken(), addShortLike);

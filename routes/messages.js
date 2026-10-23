@@ -1,13 +1,17 @@
 import express from "express";
-import { getMessages, addMessage, getAllMessages, getNewMessages, markAsRead } from "../controllers/message.js";
+import { getMessages, addMessage, getAllMessages, getNewMessages, markAsRead, getMessageParticipant } from "../controllers/message.js";
 import { validateToken } from "../jwt.js";
+import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
 const router = express.Router()
+router.use(privateNoStore);
+router.use(validateToken(), refreshViewer);
 
-router.get("/", validateToken(), getMessages);
-router.get("/new", validateToken(), getNewMessages);
-router.get("/all", validateToken(), getAllMessages);
-router.post("/", validateToken(), addMessage);
-router.put("/markRead", validateToken(), markAsRead);
+router.get("/", getMessages);
+router.get("/new", getNewMessages);
+router.get("/all", getAllMessages);
+router.get("/participant/:userId", getMessageParticipant);
+router.post("/", addMessage);
+router.put("/markRead", markAsRead);
 
 export default router

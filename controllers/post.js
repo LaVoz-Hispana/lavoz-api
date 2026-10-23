@@ -1,11 +1,20 @@
 import {db} from "../connect.js"
 import moment from "moment"
-import jwt from "jsonwebtoken";
 import schedule from "node-schedule";
+import { canOpenProfile, redactStudentIdentity, redactTaggedContent } from "../services/studentPrivacy.js";
+import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
+
+const authorIdentityColumns = `${providerDisplayNameSql("u")} AS username,
+  ${providerTypeLabelSql("u")} AS providerTypeLabel, u.provider_type`;
+
+const visibleContent = (rows, viewer) => rows.map((row) => {
+  const result = redactTaggedContent(row, viewer);
+  return redactStudentIdentity(result, viewer);
+});
 
 export const getTopPosts = (req, res) => {
     const q = `
-      SELECT p.*, u.id AS userId, username, profilePic, COUNT(l.userId) AS likeCount
+      SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType, COUNT(l.userId) AS likeCount
       FROM posts AS p
       JOIN users AS u ON (u.id = p.userId)
       LEFT JOIN likes AS l ON (p.id = l.postId)
@@ -17,14 +26,14 @@ export const getTopPosts = (req, res) => {
     `;
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
     });
 };
 
 export const getLatestNews = (req, res) => {
     const q = `
-      SELECT p.*, u.id AS userId, name, profilePic
+      SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType
       FROM posts AS p
       JOIN users AS u ON (u.id = p.userId)
       WHERE p.createdAt >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
@@ -33,48 +42,54 @@ export const getLatestNews = (req, res) => {
     `;
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
     });
 };
 
-export const getPosts = async (req, res) => {
-  const userId = req.query.userId;
-  const token = req.cookies.accessToken;
+export const getPosts = (req, res) => {
+  const requestedUserId = req.query.userId;
   const limit = 25;
-  let q;
-  let values;
-
-  if (token) {
-    jwt.verify(token, process.env.JWT_SECRET, (err, userInfo) => {
-      if (err) {
-        console.error("Error verifying token:", err);
-      } else {
-        if (userId && userId !== "undefined") {
-            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.userId = ? ORDER BY p.createdAt DESC LIMIT ${limit}`;
-            values = [userId];
-        } else {
-            q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
-            values = [];
-        }
-      }
-    });
-  } else {
-    q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) ORDER BY p.createdAt DESC LIMIT ${limit}`;
-    values = [];
+  const hasTarget = requestedUserId && requestedUserId !== "undefined";
+  const userId = hasTarget ? Number(requestedUserId) : null;
+  if (hasTarget && (!Number.isSafeInteger(userId) || userId <= 0)) {
+    return res.status(400).json({ code: "invalid_id" });
   }
 
-  db.query(q, values, (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json(data);
+  const loadPosts = () => {
+    const where = hasTarget ? "WHERE p.userId = ?" : "";
+    const q = `SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType,
+      pr.title AS projectTitle, pr.description AS projectDescription,
+      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username, '::', tu.account_type) SEPARATOR '||')
+       FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers
+      FROM posts AS p
+      JOIN users AS u ON u.id = p.userId
+      LEFT JOIN projects AS pr ON pr.id = p.projectId
+      ${where}
+      ORDER BY p.createdAt DESC LIMIT ${limit}`;
+    db.query(q, hasTarget ? [userId] : [], (err, data) => {
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
+    });
+  };
+
+  if (!hasTarget) return loadPosts();
+  if (!canOpenProfile(req.user, userId)) return res.status(403).json({ code: "profile_private" });
+  db.query("SELECT id, account_type FROM users WHERE id = ?", [userId], (error, users) => {
+    if (error) return res.status(500).json({ code: "request_failed" });
+    if (!users?.length) return res.status(404).json({ code: "user_not_found" });
+    if (users[0].account_type === "student" && !canOpenProfile(req.user, userId)) {
+      return res.status(403).json({ code: "student_profile_private" });
+    }
+    return loadPosts();
   });
 };
 
 export const getProjectPosts = (req, res) => {
   const { projectId } = req.params;
   const q = `
-    SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription,
-      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers
+    SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType, pr.title AS projectTitle, pr.description AS projectDescription,
+      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username, '::', tu.account_type) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers
     FROM posts AS p
     JOIN users AS u ON (u.id = p.userId)
     LEFT JOIN projects AS pr ON (pr.id = p.projectId)
@@ -82,15 +97,15 @@ export const getProjectPosts = (req, res) => {
     ORDER BY p.createdAt DESC
   `;
   db.query(q, [projectId], (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json(data);
+    if (err) return res.status(500).json({ code: "request_failed" });
+    return res.status(200).json(visibleContent(data, req.user));
   });
 };
 
 export const getAdminPosts = (req, res) => {
   const q = `
-    SELECT p.*, u.id AS userId, username, profilePic,
-      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||')
+    SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType,
+      (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username, '::', tu.account_type) SEPARATOR '||')
        FROM post_tags pt JOIN users tu ON tu.id = pt.userId
        WHERE pt.postId = p.id) AS taggedUsers
     FROM posts AS p
@@ -100,50 +115,50 @@ export const getAdminPosts = (req, res) => {
   `;
 
   db.query(q, (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json(data);
+    if (err) return res.status(500).json({ code: "request_failed" });
+    return res.status(200).json(visibleContent(data, req.user));
   });
 };
 
 export const getShorts = (req, res) => {
   const q =
-  `SELECT v.*, u.id AS userId, username, profilePic FROM shorts AS v JOIN users AS u ON (u.id = v.userId)
+  `SELECT v.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType FROM shorts AS v JOIN users AS u ON (u.id = v.userId)
   ORDER BY v.createdAt DESC LIMIT 30`;
 
  db.query(q, (err, data) => {
-   if (err) return res.status(500).json(err);
-   return res.status(200).json(data);
+   if (err) return res.status(500).json({ code: "request_failed" });
+   return res.status(200).json(visibleContent(data, req.user));
  });
 }
 
 export const getEvents = (req, res) => {
     const q =
-     `SELECT e.*, u.id AS userId, username, profilePic FROM events AS e JOIN users AS u ON (u.id = e.userId)
+     `SELECT e.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType FROM events AS e JOIN users AS u ON (u.id = e.userId)
      WHERE e.date >= DATE(NOW())
      ORDER BY e.date ASC`;
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
     });
 };
 
 export const getJobs = (req, res) => {
     const q =
-     `SELECT j.*, u.id AS userId, username, profilePic FROM jobs AS j JOIN users AS u ON (u.id = j.userId)
+     `SELECT j.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType FROM jobs AS j JOIN users AS u ON (u.id = j.userId)
      ORDER BY j.createdAt DESC`;
 
     db.query(q, (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
     });
 };
 
 export const findPost = (req, res) => {
-    const q = `SELECT p.*, u.id AS userId, username, profilePic, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.id = ?`;
+    const q = `SELECT p.*, u.id AS userId, ${authorIdentityColumns}, profilePic, u.account_type AS authorAccountType, pr.title AS projectTitle, pr.description AS projectDescription, (SELECT GROUP_CONCAT(CONCAT(tu.id, '::', tu.username, '::', tu.account_type) SEPARATOR '||') FROM post_tags pt JOIN users tu ON tu.id = pt.userId WHERE pt.postId = p.id) AS taggedUsers FROM posts AS p JOIN users AS u ON (u.id = p.userId) LEFT JOIN projects AS pr ON (pr.id = p.projectId) WHERE p.id = ?`;
     db.query(q, [req.query.id], (err, data) => {
-      if (err) return res.status(500).json(err);
-      return res.status(200).json(data);
+      if (err) return res.status(500).json({ code: "request_failed" });
+      return res.status(200).json(visibleContent(data, req.user));
     });
 }
 
@@ -188,12 +203,12 @@ export const addPost = (req, res) => {
       isAdminPost,
     ];
     db.query(q, [values], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if (taggedUserIds.length === 0) return res.status(200).json("Post has been created.");
 
       const tagValues = taggedUserIds.map((userId) => [data.insertId, userId]);
       db.query("INSERT INTO post_tags (`postId`, `userId`) VALUES ?", [tagValues], (tagErr) => {
-        if (tagErr) return res.status(500).json(tagErr);
+        if (tagErr) return res.status(500).json({ code: "request_failed" });
         return res.status(200).json("Post has been created.");
       });
     });
@@ -210,7 +225,7 @@ export const addPost = (req, res) => {
       WHERE projectId = ? AND (studentId = ? OR localId = ?)
     `;
     db.query(escrowQ, [req.user.id, projectId, req.user.id, req.user.id], (err, escrows) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if (!escrows || escrows.length === 0) {
         return res.status(403).json({ error: "You can only reference projects in your escrows." });
       }
@@ -236,7 +251,7 @@ export const addShort = (req, res) => {
       req.user.id,
     ];
     db.query(q, [values], (err) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       return res.status(200).json("Short has been created.");
     });
 }
@@ -255,7 +270,7 @@ export const addEvent = (req, res) => {
       req.body.category
     ];
     db.query(q, [values], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       return res.status(200).json("Event has been created.");
     });
 };
@@ -264,7 +279,7 @@ export const deleteEvent = (req, res) => {
     const q = "DELETE FROM events WHERE `id`=?";
 
     db.query(q, [req.params.id], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if(data.affectedRows>0) return res.status(200).json("Post has been deleted.");
       return res.status(403).json("You can delete only your post")
     });
@@ -287,7 +302,7 @@ export const addJob = (req, res) => {
     ];
 
     db.query(q, [values], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       return res.status(200).json("Job has been created.");
     });
 };
@@ -296,7 +311,7 @@ export const deleteJob = (req, res) => {
     const q = "DELETE FROM jobs WHERE `id`=?";
 
     db.query(q, [req.params.id], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if(data.affectedRows>0) return res.status(200).json("Post has been deleted.");
       return res.status(403).json("You can delete only your post")
     });
@@ -305,7 +320,7 @@ export const deleteJob = (req, res) => {
 export const deletePost = (req, res) => {
     const q = "DELETE FROM posts WHERE `id`=?";
     db.query(q, [req.params.id], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if(data.affectedRows>0) return res.status(200).json("Post has been deleted.");
       return res.status(403).json("You can delete only your post")
     });
@@ -314,7 +329,7 @@ export const deletePost = (req, res) => {
 export const deleteShort = (req, res) => {
     const q = "DELETE FROM shorts WHERE `id`=?";
     db.query(q, [req.params.id], (err, data) => {
-      if (err) return res.status(500).json(err);
+      if (err) return res.status(500).json({ code: "request_failed" });
       if(data.affectedRows>0) return res.status(200).json("Short has been deleted.");
       return res.status(403).json("You can delete only your post")
     });

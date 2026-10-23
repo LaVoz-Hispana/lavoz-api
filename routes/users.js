@@ -1,13 +1,15 @@
 import express from "express";
 import { getUser, getAllUsers, updateUser, getFollowers, getFollowing } from "../controllers/user.js";
 import { validateToken, optionalToken } from "../jwt.js";
+import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
 const router = express.Router()
 
-router.get("/find/:userId", getUser);
-router.get("/", optionalToken(), getAllUsers);
-router.get("/followers", validateToken(), getFollowers);
-router.get("/following", validateToken(), getFollowing);
-router.put("/", validateToken(), updateUser);
+router.use(privateNoStore);
+router.get("/find/:userId", validateToken(), refreshViewer, getUser);
+router.get("/", optionalToken(), refreshViewer, getAllUsers);
+router.get("/followers", validateToken(), refreshViewer, getFollowers);
+router.get("/following", validateToken(), refreshViewer, getFollowing);
+router.put("/", validateToken(), refreshViewer, updateUser);
 
 export default router

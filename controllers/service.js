@@ -1,4 +1,5 @@
 import { db } from "../connect.js";
+import { canOpenProfile, redactStudentIdentity } from "../services/studentPrivacy.js";
 
 export const getServices = (req, res) => {
     const { category, subcategory, userId } = req.query;
@@ -6,10 +7,12 @@ export const getServices = (req, res) => {
     const params = [];
     let joinClause = "";
     let whereClause = "";
+    let targetUserId = null;
 
     if (userId) {
         const parsedUserId = Number(userId);
         if (!Number.isInteger(parsedUserId) || parsedUserId <= 0) return res.status(400).json({ error: "A valid user id is required." });
+        targetUserId = parsedUserId;
         whereClause = "WHERE s.userId = ?";
         params.push(parsedUserId);
     } else if (subcategory) {
@@ -26,7 +29,7 @@ export const getServices = (req, res) => {
     }
 
     const q = `
-        SELECT DISTINCT s.id, s.userId, u.username, u.profilePic, u.university, reviews.reviewCount, reviews.averageRating,
+        SELECT DISTINCT s.id, s.userId, u.username, u.profilePic, u.university, u.account_type AS authorAccountType, reviews.reviewCount, reviews.averageRating,
                s.title, s.description, s.skills, s.availability, s.createdAt,
                cat.slug AS categorySlug, cat.name AS categoryName,
                (
@@ -47,9 +50,28 @@ export const getServices = (req, res) => {
         ${whereClause}
         ORDER BY s.createdAt DESC
     `;
-    db.query(q, params, (err, data) => {
-        if (err) return res.status(500).json(err);
-        return res.status(200).json(data);
+    const loadServices = () => db.query(q, params, (err, data) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        return res.status(200).json(data.map((row) => {
+            const visible = redactStudentIdentity(row, req.user);
+            if (!visible.profileVisible) {
+                visible.university = null;
+                visible.reviewCount = null;
+                visible.averageRating = null;
+            }
+            return visible;
+        }));
+    });
+
+    if (!targetUserId) return loadServices();
+    if (!canOpenProfile(req.user, targetUserId)) return res.status(403).json({ code: "profile_private" });
+    db.query("SELECT id, account_type FROM users WHERE id = ?", [targetUserId], (error, users) => {
+        if (error) return res.status(500).json({ code: "request_failed" });
+        if (!users?.length) return res.status(404).json({ code: "user_not_found" });
+        if (users[0].account_type === "student" && !canOpenProfile(req.user, targetUserId)) {
+            return res.status(403).json({ code: "student_profile_private" });
+        }
+        return loadServices();
     });
 };
 
@@ -63,7 +85,7 @@ export const createService = (req, res) => {
         "SELECT categoryId FROM student_service_categories WHERE userId = ? AND categoryId = ?",
         [req.user.id, categoryId],
         (categoryErr, categories) => {
-            if (categoryErr) return res.status(500).json(categoryErr);
+            if (categoryErr) return res.status(500).json({ code: "request_failed" });
             if (categories.length === 0) return res.status(403).json({ error: "Choose a category from your selected services." });
 
             const q = "INSERT INTO services(`userId`, `title`, `description`, `skills`, `availability`, `categoryId`) VALUES (?)";
@@ -76,7 +98,7 @@ export const createService = (req, res) => {
                 categoryId,
             ];
             db.query(q, [values], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         const serviceId = data.insertId;
 
         const subcategoryIds = Array.isArray(req.body.subcategoryIds) ? req.body.subcategoryIds : [];
@@ -85,7 +107,7 @@ export const createService = (req, res) => {
         const tagQ = "INSERT INTO service_categories (`serviceId`, `subcategoryId`) VALUES ?";
         const tagValues = subcategoryIds.map((subcategoryId) => [serviceId, subcategoryId]);
         db.query(tagQ, [tagValues], (err) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             return res.status(201).json({ id: serviceId });
         });
             });
@@ -103,7 +125,7 @@ export const updateService = (req, res) => {
     }
 
     db.query("SELECT userId FROM services WHERE id = ?", [req.params.id], (serviceErr, services) => {
-        if (serviceErr) return res.status(500).json(serviceErr);
+        if (serviceErr) return res.status(500).json({ code: "request_failed" });
         if (services.length === 0) return res.status(404).json({ error: "Service not found." });
         if (services[0].userId !== req.user.id) return res.status(403).json({ error: "Not allowed." });
 
@@ -111,7 +133,7 @@ export const updateService = (req, res) => {
             "SELECT categoryId FROM student_service_categories WHERE userId = ? AND categoryId = ?",
             [req.user.id, categoryId],
             (categoryErr, categories) => {
-                if (categoryErr) return res.status(500).json(categoryErr);
+                if (categoryErr) return res.status(500).json({ code: "request_failed" });
                 if (categories.length === 0) {
                     return res.status(403).json({ error: "Choose a category from your selected services." });
                 }
@@ -126,7 +148,7 @@ export const updateService = (req, res) => {
                     req.params.id,
                 ];
                 db.query(q, values, (updateErr) => {
-                    if (updateErr) return res.status(500).json(updateErr);
+                    if (updateErr) return res.status(500).json({ code: "request_failed" });
                     return res.status(200).json({ message: "Service updated." });
                 });
             }
@@ -137,7 +159,7 @@ export const updateService = (req, res) => {
 export const deleteService = (req, res) => {
     // Owner or admin may delete
     db.query("SELECT userId FROM services WHERE id = ?", [req.params.id], (err, data) => {
-        if (err) return res.status(500).json(err);
+        if (err) return res.status(500).json({ code: "request_failed" });
         if (!data || data.length === 0) return res.status(404).json({ error: "Service not found." });
 
         const isOwner = data[0].userId === req.user.id;
@@ -146,7 +168,7 @@ export const deleteService = (req, res) => {
         if (!isOwner && !isAdmin) return res.status(403).json({ error: "Not allowed." });
 
         db.query("DELETE FROM services WHERE id = ?", [req.params.id], (err) => {
-            if (err) return res.status(500).json(err);
+            if (err) return res.status(500).json({ code: "request_failed" });
             return res.status(200).json("Service deleted.");
         });
     });
