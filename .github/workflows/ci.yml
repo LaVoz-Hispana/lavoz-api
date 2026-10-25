@@ -1,0 +1,41 @@
+name: lavoz-api
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Backend validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      NODE_ENV: test
+      NOTIFICATION_EMAIL_ENABLED: "false"
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check entry point syntax
+        run: |
+          node --check index.js
+          node --check workers/email.js
+
+      - name: Run tests
+        run: npm test
