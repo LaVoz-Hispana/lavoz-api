@@ -1,6 +1,9 @@
-import {db} from "../connect.js";
+import { db } from "../connect.js";
 import { redactStudentIdentity } from "../services/studentPrivacy.js";
-import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
+import {
+  providerDisplayNameSql,
+  providerTypeLabelSql,
+} from "../services/providerIdentity.js";
 
 export const getNotifications = (req, res) => {
   const q = `SELECT n.id, n.userTo,
@@ -17,7 +20,13 @@ export const getNotifications = (req, res) => {
     WHERE n.userTo = ? ORDER BY n.createdAt DESC LIMIT 30;`;
   db.query(q, [req.user.id], (err, data) => {
     if (err) return res.status(500).json({ code: "request_failed" });
-    return res.status(200).json(data.map((row) => redactStudentIdentity(row, req.user, { identityAliases: ["userFrom"] })));
+    return res.status(200).json(
+      data.map((row) =>
+        redactStudentIdentity(row, req.user, {
+          identityAliases: ["userFrom"],
+        }),
+      ),
+    );
   });
 };
 
@@ -60,14 +69,14 @@ export const getCommentNotif = (req, res) => {
 };
 
 export const clearNotifAlert = (req, res) => {
-    const q = "UPDATE notifications SET new = ? WHERE id = ? AND userTo = ?";
-    const values = [0, req.body.id, req.user.id];
+  const q = "UPDATE notifications SET new = ? WHERE id = ? AND userTo = ?";
+  const values = [0, req.body.id, req.user.id];
 
-    db.query(q, values, (err, data) => {
-      if (err) {
-          console.error("Error clearing notif alert:");
-          return res.status(500).json("Error updating notification.");
-      }
-      return res.status(200).json("Notification alert cleared successfully.");
-    });
+  db.query(q, values, (err) => {
+    if (err) {
+      console.error("Error clearing notif alert:");
+      return res.status(500).json("Error updating notification.");
+    }
+    return res.status(200).json("Notification alert cleared successfully.");
+  });
 };

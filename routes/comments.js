@@ -1,5 +1,9 @@
 import express from "express";
-import { getComments, addComment, getCommentDesc } from "../controllers/comment.js";
+import {
+  getComments,
+  addComment,
+  getCommentDesc,
+} from "../controllers/comment.js";
 import { optionalToken, validateToken } from "../jwt.js";
 import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 

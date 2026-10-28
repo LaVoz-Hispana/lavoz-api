@@ -7,7 +7,13 @@ export function getMailer() {
     const user = process.env.SMTP_USER || process.env.MY_EMAIL;
     const pass = process.env.SMTP_PASSWORD || process.env.APP_PASSWORD;
     const port = Number(process.env.SMTP_PORT || 587);
-    if (!user || !pass || !Number.isInteger(port) || port <= 0 || port > 65535) {
+    if (
+      !user ||
+      !pass ||
+      !Number.isInteger(port) ||
+      port <= 0 ||
+      port > 65535
+    ) {
       throw new Error("SMTP configuration missing or invalid");
     }
     transporter = nodemailer.createTransport({
@@ -32,7 +38,8 @@ export function getMailer() {
 
 export const mailFrom = () => ({
   name: "PostStation",
-  address: process.env.SMTP_FROM || process.env.SMTP_USER || process.env.MY_EMAIL,
+  address:
+    process.env.SMTP_FROM || process.env.SMTP_USER || process.env.MY_EMAIL,
 });
 
 export const closeMailer = () => transporter?.close();

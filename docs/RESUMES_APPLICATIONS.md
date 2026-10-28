@@ -33,20 +33,20 @@ change itself. Missing/private-bucket configuration does not block profile setup
 All routes require authentication. Roles are reloaded from users for these routes.
 Resume/application JSON never includes S3 object keys or URLs.
 
-| Method | Route | Access / purpose |
-| --- | --- | --- |
-| GET | `/api/resumes` | Student's live library |
-| POST | `/api/resumes` | Student; multipart `file`, `label` |
-| PUT | `/api/resumes/:id` | Owner; `{label}` and/or `{isDefault: true}` |
-| PUT | `/api/resumes/:id/file` | Owner; multipart replacement, returns new resume ID |
-| DELETE | `/api/resumes/:id` | Owner; refuses a resume in a submitted application |
-| GET | `/api/resumes/:id/download` | Owner, admin, or owner of a project with this resume in a submitted/selected application; streams attachment |
-| GET | `/api/applications/mine[?projectId=…]` | Student's own applications |
-| POST | `/api/applications/projects/:projectId` | Student; `{resumeId, note?}` |
-| GET | `/api/applications/projects/:projectId` | Owning provider's review view |
-| PUT | `/api/applications/projects/:projectId/:id/withdraw` | Applicant, submitted and project open |
-| PUT | `/api/applications/projects/:projectId/:id/select` | Owning provider, submitted and project open |
-| PUT | `/api/applications/projects/:projectId/:id/reject` | Owning provider, submitted and project open |
+| Method | Route                                                | Access / purpose                                                                                             |
+| ------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/resumes`                                       | Student's live library                                                                                       |
+| POST   | `/api/resumes`                                       | Student; multipart `file`, `label`                                                                           |
+| PUT    | `/api/resumes/:id`                                   | Owner; `{label}` and/or `{isDefault: true}`                                                                  |
+| PUT    | `/api/resumes/:id/file`                              | Owner; multipart replacement, returns new resume ID                                                          |
+| DELETE | `/api/resumes/:id`                                   | Owner; refuses a resume in a submitted application                                                           |
+| GET    | `/api/resumes/:id/download`                          | Owner, admin, or owner of a project with this resume in a submitted/selected application; streams attachment |
+| GET    | `/api/applications/mine[?projectId=…]`               | Student's own applications                                                                                   |
+| POST   | `/api/applications/projects/:projectId`              | Student; `{resumeId, note?}`                                                                                 |
+| GET    | `/api/applications/projects/:projectId`              | Owning provider's review view                                                                                |
+| PUT    | `/api/applications/projects/:projectId/:id/withdraw` | Applicant, submitted and project open                                                                        |
+| PUT    | `/api/applications/projects/:projectId/:id/select`   | Owning provider, submitted and project open                                                                  |
+| PUT    | `/api/applications/projects/:projectId/:id/reject`   | Owning provider, submitted and project open                                                                  |
 
 Uploads validate extension, declared MIME, size (10 MiB), and PDF/OOXML signature.
 DOCX validation checks the ZIP directory and core document XML with bounded

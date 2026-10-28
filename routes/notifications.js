@@ -1,10 +1,20 @@
 import express from "express";
-import { getNotifications, getNewNotifications, getLikeNotif, getFollowNotif, getCommentNotif, clearNotifAlert } from "../controllers/notification.js";
+import {
+  getNotifications,
+  getNewNotifications,
+  getLikeNotif,
+  getFollowNotif,
+  getCommentNotif,
+  clearNotifAlert,
+} from "../controllers/notification.js";
 import { validateToken } from "../jwt.js";
-import { getNotificationPreferences, updateNotificationPreferences } from "../controllers/notificationPreferences.js";
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from "../controllers/notificationPreferences.js";
 import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
-const router = express.Router()
+const router = express.Router();
 router.use(privateNoStore);
 router.use(validateToken(), refreshViewer);
 
@@ -18,4 +28,4 @@ router.get("/follow", getFollowNotif);
 router.get("/comment", getCommentNotif);
 router.put("/clearAlert", clearNotifAlert);
 
-export default router
+export default router;

@@ -1,10 +1,30 @@
 import express from "express";
-import { addJob, getLatestNews, getTopPosts, getJobs, deleteJob, deleteEvent, addShort, getShorts, deleteShort } from "../controllers/post.js";
-import { getPosts, getProjectPosts, getAdminPosts, findPost, getEvents, addPost, addAdminPost, addEvent, deletePost } from "../controllers/post.js"
+import {
+  addJob,
+  getLatestNews,
+  getTopPosts,
+  getJobs,
+  deleteJob,
+  deleteEvent,
+  addShort,
+  getShorts,
+  deleteShort,
+} from "../controllers/post.js";
+import {
+  getPosts,
+  getProjectPosts,
+  getAdminPosts,
+  findPost,
+  getEvents,
+  addPost,
+  addAdminPost,
+  addEvent,
+  deletePost,
+} from "../controllers/post.js";
 import { optionalToken, validateToken } from "../jwt.js";
 import { privateNoStore, refreshViewer } from "../services/studentPrivacy.js";
 
-const router = express.Router()
+const router = express.Router();
 router.use(privateNoStore);
 
 const viewer = [optionalToken(), refreshViewer];
@@ -27,4 +47,4 @@ router.delete("/jobs/:id", validateToken(), deleteJob);
 router.delete("/events/:id", validateToken(), deleteEvent);
 router.delete("/shorts/:id", validateToken(), deleteShort);
 
-export default router
+export default router;
