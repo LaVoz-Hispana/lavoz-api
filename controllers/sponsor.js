@@ -42,11 +42,9 @@ export const updateSponsorSection = (req, res) => {
   const contentEs = String(req.body.contentEs || "").trim();
 
   if (!contentEn || !contentEs) {
-    return res
-      .status(400)
-      .json({
-        error: "Both English and Spanish sponsor messages are required.",
-      });
+    return res.status(400).json({
+      error: "Both English and Spanish sponsor messages are required.",
+    });
   }
 
   const q = `

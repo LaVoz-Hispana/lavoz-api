@@ -155,11 +155,9 @@ export const updateService = (req, res) => {
     !Number.isInteger(categoryId) ||
     categoryId <= 0
   ) {
-    return res
-      .status(400)
-      .json({
-        error: "A title, description, and valid service category are required.",
-      });
+    return res.status(400).json({
+      error: "A title, description, and valid service category are required.",
+    });
   }
 
   db.query(
@@ -179,11 +177,9 @@ export const updateService = (req, res) => {
           if (categoryErr)
             return res.status(500).json({ code: "request_failed" });
           if (categories.length === 0) {
-            return res
-              .status(403)
-              .json({
-                error: "Choose a category from your selected services.",
-              });
+            return res.status(403).json({
+              error: "Choose a category from your selected services.",
+            });
           }
 
           const q =

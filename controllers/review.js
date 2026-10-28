@@ -226,12 +226,10 @@ export const createReview = (req, res) => {
     rating > 5 ||
     !Number.isInteger(rating * 2)
   ) {
-    return res
-      .status(400)
-      .json({
-        error:
-          "A completed project and a rating from 0.5 to 5 in half-star increments are required.",
-      });
+    return res.status(400).json({
+      error:
+        "A completed project and a rating from 0.5 to 5 in half-star increments are required.",
+    });
   }
   if (commentary && commentary.length > 2000)
     return res
@@ -245,11 +243,9 @@ export const createReview = (req, res) => {
         .status(404)
         .json({ error: "Project collaboration not found." });
     if (escrow.status !== "completed")
-      return res
-        .status(409)
-        .json({
-          error: "Reviews are available after the project is completed.",
-        });
+      return res.status(409).json({
+        error: "Reviews are available after the project is completed.",
+      });
     const reviewerId = req.user.id;
     if (reviewerId !== escrow.studentId && reviewerId !== escrow.localId)
       return res
@@ -285,11 +281,9 @@ export const updateReview = (req, res) => {
     rating > 5 ||
     !Number.isInteger(rating * 2)
   ) {
-    return res
-      .status(400)
-      .json({
-        error: "A rating from 0.5 to 5 in half-star increments is required.",
-      });
+    return res.status(400).json({
+      error: "A rating from 0.5 to 5 in half-star increments is required.",
+    });
   }
   if (commentary && commentary.length > 2000)
     return res

@@ -154,14 +154,12 @@ for (const router of [resumeRoutes, applicationRoutes]) {
   router.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     if (error instanceof multer.MulterError)
-      return res
-        .status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400)
-        .json({
-          code:
-            error.code === "LIMIT_FILE_SIZE"
-              ? "resume_too_large"
-              : "resume_invalid_upload",
-        });
+      return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+        code:
+          error.code === "LIMIT_FILE_SIZE"
+            ? "resume_too_large"
+            : "resume_invalid_upload",
+      });
     if (!error.status)
       console.error("student_application_request_failed", {
         code: error.code || "INTERNAL_ERROR",

@@ -14,12 +14,10 @@ const isProduction = process.env.NODE_ENV === "production";
 
 export const register = (req, res) => {
   if (!["student", "local"].includes(req.body.account_type)) {
-    return res
-      .status(400)
-      .json({
-        code: "invalid_account_type",
-        error: "Choose a Student or Project Provider account.",
-      });
+    return res.status(400).json({
+      code: "invalid_account_type",
+      error: "Choose a Student or Project Provider account.",
+    });
   }
   const providerResult =
     req.body.account_type === "local"

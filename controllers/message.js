@@ -23,16 +23,14 @@ export const getMessages = (req, res) => {
       console.error("Error executing SQL query:");
       return res.status(500).json({ code: "request_failed" });
     }
-    return res
-      .status(200)
-      .json(
-        data.map((row) =>
-          redactStudentIdentity(row, req.user, {
-            names: ["name"],
-            identityAliases: ["msgFrom"],
-          }),
-        ),
-      );
+    return res.status(200).json(
+      data.map((row) =>
+        redactStudentIdentity(row, req.user, {
+          names: ["name"],
+          identityAliases: ["msgFrom"],
+        }),
+      ),
+    );
   });
 };
 

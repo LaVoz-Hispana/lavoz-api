@@ -197,11 +197,9 @@ export const addPost = (req, res) => {
   }
 
   if (isAdminPost && (projectId || taggedUserIds.length > 0)) {
-    return res
-      .status(400)
-      .json({
-        error: "Official posts cannot reference projects or tag collaborators.",
-      });
+    return res.status(400).json({
+      error: "Official posts cannot reference projects or tag collaborators.",
+    });
   }
 
   const insertPost = () => {
@@ -273,11 +271,9 @@ export const addPost = (req, res) => {
         escrows.map((escrow) => escrow.collaboratorId),
       );
       if (taggedUserIds.some((userId) => !collaboratorIds.has(userId))) {
-        return res
-          .status(403)
-          .json({
-            error: "You can only tag collaborators from this project escrow.",
-          });
+        return res.status(403).json({
+          error: "You can only tag collaborators from this project escrow.",
+        });
       }
       return insertPost();
     },

@@ -26,12 +26,10 @@ export async function updateNotificationPreferences(req, res) {
     typeof marketplaceEmail !== "boolean" ||
     ![undefined, null, "en", "es"].includes(language)
   ) {
-    return res
-      .status(400)
-      .json({
-        error:
-          "marketplaceEmail must be a boolean; language must be en, es, or null.",
-      });
+    return res.status(400).json({
+      error:
+        "marketplaceEmail must be a boolean; language must be en, es, or null.",
+    });
   }
   try {
     if (language === undefined) {

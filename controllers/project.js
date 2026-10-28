@@ -138,13 +138,11 @@ export const createProject = (req, res) => {
       if (!providers?.length)
         return res.status(403).json({ code: "forbidden" });
       if (!providers[0].provider_profile_complete) {
-        return res
-          .status(409)
-          .json({
-            code: "provider_profile_incomplete",
-            error:
-              "Complete your Project Provider profile before posting a project.",
-          });
+        return res.status(409).json({
+          code: "provider_profile_incomplete",
+          error:
+            "Complete your Project Provider profile before posting a project.",
+        });
       }
 
       db.query(
@@ -210,11 +208,9 @@ export const updateProject = (req, res) => {
     !Number.isInteger(categoryId) ||
     categoryId <= 0
   ) {
-    return res
-      .status(400)
-      .json({
-        error: "A title, description, and valid project category are required.",
-      });
+    return res.status(400).json({
+      error: "A title, description, and valid project category are required.",
+    });
   }
 
   db.query(
@@ -311,11 +307,9 @@ export const deleteProject = (req, res) => {
         (err, escrows) => {
           if (err) return res.status(500).json({ code: "request_failed" });
           if (escrows && escrows.length > 0)
-            return res
-              .status(409)
-              .json({
-                error: "Cannot delete a project that has a linked escrow.",
-              });
+            return res.status(409).json({
+              error: "Cannot delete a project that has a linked escrow.",
+            });
 
           db.query(
             "DELETE FROM projects WHERE id = ?",

@@ -26,11 +26,9 @@ export const createMilestone = (req, res) => {
     if (escrow.localId !== req.user.id)
       return res.status(403).json({ error: "Forbidden." });
     if (!["pending", "active"].includes(escrow.status)) {
-      return res
-        .status(409)
-        .json({
-          error: "Milestones can only be added to pending or active escrows.",
-        });
+      return res.status(409).json({
+        error: "Milestones can only be added to pending or active escrows.",
+      });
     }
 
     const ts = now();
@@ -119,12 +117,10 @@ export const updateMilestone = (req, res) => {
           return res.status(404).json({ error: "Milestone not found." });
 
         if (escrow.status !== "pending" && data[0].status !== "pending") {
-          return res
-            .status(409)
-            .json({
-              error:
-                "Milestone can only be updated while the escrow or the milestone itself is pending.",
-            });
+          return res.status(409).json({
+            error:
+              "Milestone can only be updated while the escrow or the milestone itself is pending.",
+          });
         }
 
         const m = data[0];
@@ -176,12 +172,10 @@ export const deleteMilestone = (req, res) => {
           return res.status(404).json({ error: "Milestone not found." });
 
         if (escrow.status !== "pending" && data[0].status !== "pending") {
-          return res
-            .status(409)
-            .json({
-              error:
-                "Milestone can only be deleted while the escrow or the milestone itself is pending.",
-            });
+          return res.status(409).json({
+            error:
+              "Milestone can only be deleted while the escrow or the milestone itself is pending.",
+          });
         }
 
         db.query("DELETE FROM milestones WHERE id = ?", [mid], (err) => {
@@ -203,11 +197,9 @@ export const approveMilestone = (req, res) => {
     if (escrow.localId !== req.user.id)
       return res.status(403).json({ error: "Forbidden." });
     if (!["active", "submitted"].includes(escrow.status)) {
-      return res
-        .status(409)
-        .json({
-          error: "Escrow must be active or submitted to approve milestones.",
-        });
+      return res.status(409).json({
+        error: "Escrow must be active or submitted to approve milestones.",
+      });
     }
 
     db.query(
@@ -331,11 +323,9 @@ export const requestMilestoneChanges = (req, res) => {
           return res.status(404).json({ error: "Milestone not found." });
 
         if (data[0].status !== "submitted") {
-          return res
-            .status(409)
-            .json({
-              error: "Only submitted milestones can have changes requested.",
-            });
+          return res.status(409).json({
+            error: "Only submitted milestones can have changes requested.",
+          });
         }
 
         const ts = now();

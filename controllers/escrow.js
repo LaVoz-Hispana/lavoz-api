@@ -47,15 +47,13 @@ const createDirectEscrow = (admin) => async (req, res) => {
     return res.status(201).json({ id: created.id });
   } catch (error) {
     const code = error.status ? error.code : "request_failed";
-    return res
-      .status(error.status || 500)
-      .json({
-        code,
-        error:
-          code === "application_selection_required"
-            ? "Select an applicant from the project's Applications section."
-            : code,
-      });
+    return res.status(error.status || 500).json({
+      code,
+      error:
+        code === "application_selection_required"
+          ? "Select an applicant from the project's Applications section."
+          : code,
+    });
   }
 };
 export const createEscrow = createDirectEscrow(true);
@@ -272,11 +270,9 @@ export const updateEscrowStatus = (req, res) => {
     // Validate transition and caller
     const allowed = isTransitionAllowed(current, nextStatus, role, uid, escrow);
     if (!allowed) {
-      return res
-        .status(403)
-        .json({
-          error: `Transition '${current}' → '${nextStatus}' is not permitted for your role.`,
-        });
+      return res.status(403).json({
+        error: `Transition '${current}' → '${nextStatus}' is not permitted for your role.`,
+      });
     }
 
     const timestampField = transitionTimestampField(nextStatus);

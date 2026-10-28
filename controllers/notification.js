@@ -20,15 +20,13 @@ export const getNotifications = (req, res) => {
     WHERE n.userTo = ? ORDER BY n.createdAt DESC LIMIT 30;`;
   db.query(q, [req.user.id], (err, data) => {
     if (err) return res.status(500).json({ code: "request_failed" });
-    return res
-      .status(200)
-      .json(
-        data.map((row) =>
-          redactStudentIdentity(row, req.user, {
-            identityAliases: ["userFrom"],
-          }),
-        ),
-      );
+    return res.status(200).json(
+      data.map((row) =>
+        redactStudentIdentity(row, req.user, {
+          identityAliases: ["userFrom"],
+        }),
+      ),
+    );
   });
 };
 

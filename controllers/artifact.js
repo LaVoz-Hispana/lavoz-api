@@ -169,11 +169,9 @@ export const deleteArtifact = (req, res) => {
       if (artifact.studentId !== req.user.id)
         return res.status(403).json({ error: "Forbidden." });
       if (artifact.escrowStatus !== "active")
-        return res
-          .status(409)
-          .json({
-            error: "Artifacts can only be deleted while the escrow is active.",
-          });
+        return res.status(409).json({
+          error: "Artifacts can only be deleted while the escrow is active.",
+        });
 
       db.query("DELETE FROM artifacts WHERE id = ?", [req.params.id], (err) => {
         if (err) return res.status(500).json(err);

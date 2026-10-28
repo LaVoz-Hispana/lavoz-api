@@ -33,12 +33,10 @@ router.get("/:id", getEscrowById);
 router.get("/:id/events", getEscrowEvents);
 router.put("/:id/status", updateEscrowStatus);
 router.post("/:id/submit", (_, res) =>
-  res
-    .status(410)
-    .json({
-      error:
-        "This endpoint has moved. Use POST /api/escrows/:id/milestones/:mid/submit instead.",
-    }),
+  res.status(410).json({
+    error:
+      "This endpoint has moved. Use POST /api/escrows/:id/milestones/:mid/submit instead.",
+  }),
 );
 router.post("/:id/finalize", requireRoles("local"), finalizeEscrow);
 router.put("/:id/complete", requireRoles("local"), completeEscrow);
