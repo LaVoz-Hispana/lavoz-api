@@ -2,136 +2,179 @@ import { db } from "../connect.js";
 import bcrypt from "bcryptjs";
 import { createTokens } from "../jwt.js";
 import { getMailer, mailFrom } from "../services/mailer.js";
-import crypto from "crypto";
-import { emptyProviderProfile, providerDisplayName, providerTypeLabel, validateProviderProfile, withProviderIdentity } from "../services/providerIdentity.js";
+import {
+  emptyProviderProfile,
+  providerDisplayName,
+  providerTypeLabel,
+  validateProviderProfile,
+  withProviderIdentity,
+} from "../services/providerIdentity.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
-export const register = (req,res)=>{
-    if (!["student", "local"].includes(req.body.account_type)) {
-        return res.status(400).json({ code: "invalid_account_type", error: "Choose a Student or Project Provider account." });
+export const register = (req, res) => {
+  if (!["student", "local"].includes(req.body.account_type)) {
+    return res
+      .status(400)
+      .json({
+        code: "invalid_account_type",
+        error: "Choose a Student or Project Provider account.",
+      });
+  }
+  const providerResult =
+    req.body.account_type === "local"
+      ? validateProviderProfile(req.body)
+      : { value: emptyProviderProfile };
+  if (providerResult.error) return res.status(400).json(providerResult.error);
+  // CHECK IF USER EXITS
+
+  const q = "SELECT * FROM users WHERE email = ?"; // ? provides extra security instead of req.body etc.
+
+  db.query(q, [req.body.email], (err, data) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (data.length) return res.status(409).json("User already exists!");
+    // CREATE A NEW USER
+    // hash the password
+    const salt = bcrypt.genSaltSync(10);
+    const hashedPassword = bcrypt.hashSync(req.body.password, salt);
+
+    const serviceCategoryId =
+      req.body.account_type === "student" &&
+      req.body.serviceCategoryId != null &&
+      req.body.serviceCategoryId !== ""
+        ? Number(req.body.serviceCategoryId)
+        : null;
+
+    if (
+      serviceCategoryId !== null &&
+      (!Number.isInteger(serviceCategoryId) || serviceCategoryId <= 0)
+    ) {
+      return res.status(400).json("Invalid service category.");
     }
-    const providerResult = req.body.account_type === "local"
-        ? validateProviderProfile(req.body)
-        : { value: emptyProviderProfile };
-    if (providerResult.error) return res.status(400).json(providerResult.error);
-    // CHECK IF USER EXITS
 
-    const q = "SELECT * FROM users WHERE email = ?" // ? provides extra security instead of req.body etc.
-    
-    db.query(q,[req.body.email], (err,data)=>{
-        if(err) return res.status(500).json({ code: "request_failed" })
-        if(data.length) return res.status(409).json("User already exists!")
-        // CREATE A NEW USER   
-        // hash the password
-        const salt = bcrypt.genSaltSync(10);
-        const hashedPassword = bcrypt.hashSync(req.body.password, salt);
+    const createUser = () => {
+      const q =
+        serviceCategoryId === null
+          ? "INSERT INTO users (`username`,`email`,`password`,`account_type`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)"
+          : "INSERT INTO users (`username`,`email`,`password`,`account_type`,`serviceCategoryId`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)";
+      const values = [
+        req.body.username,
+        req.body.email,
+        hashedPassword,
+        req.body.account_type,
+      ];
+      if (serviceCategoryId !== null) values.push(serviceCategoryId);
+      values.push(
+        providerResult.value.provider_type,
+        providerResult.value.contact_person_name,
+        providerResult.value.company_name,
+        providerResult.value.organization_name,
+        providerResult.value.provider_profile_complete,
+      );
 
-        const serviceCategoryId = req.body.account_type === "student" && req.body.serviceCategoryId != null && req.body.serviceCategoryId !== ""
-            ? Number(req.body.serviceCategoryId)
-            : null;
-
-        if (serviceCategoryId !== null && (!Number.isInteger(serviceCategoryId) || serviceCategoryId <= 0)) {
-            return res.status(400).json("Invalid service category.");
-        }
-
-        const createUser = () => {
-            const q = serviceCategoryId === null
-                ? "INSERT INTO users (`username`,`email`,`password`,`account_type`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)"
-                : "INSERT INTO users (`username`,`email`,`password`,`account_type`,`serviceCategoryId`,`provider_type`,`contact_person_name`,`company_name`,`organization_name`,`provider_profile_complete`) VALUE (?)";
-            const values = [
-                req.body.username,
-                req.body.email,
-                hashedPassword,
-                req.body.account_type,
-            ];
-            if (serviceCategoryId !== null) values.push(serviceCategoryId);
-            values.push(
-                providerResult.value.provider_type,
-                providerResult.value.contact_person_name,
-                providerResult.value.company_name,
-                providerResult.value.organization_name,
-                providerResult.value.provider_profile_complete,
-            );
-
-            db.query(q,[values],(err, data)=>{
-            if(err) return res.status(500).json({ code: "request_failed" });
-            const token = createTokens({ id: data.insertId, username: req.body.username, account_type: req.body.account_type, is_admin: false });
-            res.cookie("accessToken", token, {
-                maxAge: 15*24*60*60*1000,
-                httpOnly: true,
-                sameSite: isProduction ? "none" : "lax",
-                secure: isProduction
-            }).status(200).json({
-                id: data.insertId,
-                token,
-                account_type: req.body.account_type,
-                ...providerResult.value,
-                providerDisplayName: providerDisplayName({ ...providerResult.value, account_type: req.body.account_type, username: req.body.username }),
-                providerTypeLabel: providerTypeLabel(providerResult.value.provider_type),
-                providerProfileComplete: Boolean(providerResult.value.provider_profile_complete),
-            });
-            console.log("logged in");
-            });
-        };
-
-        if (serviceCategoryId === null) return createUser();
-
-        db.query("SELECT id FROM categories WHERE id = ?", [serviceCategoryId], (err, categories) => {
-            if (err) return res.status(500).json({ code: "request_failed" });
-            if (categories.length === 0) return res.status(400).json("Invalid service category.");
-            createUser();
-        });
-    });
-};
-
-export const login = (req,res)=>{
-    // CHECK IF USER EXISTS
-    const q = "SELECT * FROM users WHERE email = ?";
-
-    db.query(q,[req.body.email], (err,data)=>{
+      db.query(q, [values], (err, data) => {
         if (err) return res.status(500).json({ code: "request_failed" });
-        if (data.length === 0) return res.status(404).json("User not found!");
-
-        const checkPassword = bcrypt.compareSync(
-            req.body.password, 
-            data[0].password
-        );
-
-        if(!checkPassword) return res.status(400).json("Wrong password or email!");
-
-        const {password, ...others} = data[0];
-        const token = createTokens(data[0]);
-
-        res.cookie("accessToken", token, {
-            maxAge: 60*60*24*30*1000,
+        const token = createTokens({
+          id: data.insertId,
+          username: req.body.username,
+          account_type: req.body.account_type,
+          is_admin: false,
+        });
+        res
+          .cookie("accessToken", token, {
+            maxAge: 15 * 24 * 60 * 60 * 1000,
             httpOnly: true,
             sameSite: isProduction ? "none" : "lax",
-            secure: isProduction
-        }).status(200).json({ ...withProviderIdentity(others), token });
+            secure: isProduction,
+          })
+          .status(200)
+          .json({
+            id: data.insertId,
+            token,
+            account_type: req.body.account_type,
+            ...providerResult.value,
+            providerDisplayName: providerDisplayName({
+              ...providerResult.value,
+              account_type: req.body.account_type,
+              username: req.body.username,
+            }),
+            providerTypeLabel: providerTypeLabel(
+              providerResult.value.provider_type,
+            ),
+            providerProfileComplete: Boolean(
+              providerResult.value.provider_profile_complete,
+            ),
+          });
         console.log("logged in");
-    });
-    
+      });
+    };
+
+    if (serviceCategoryId === null) return createUser();
+
+    db.query(
+      "SELECT id FROM categories WHERE id = ?",
+      [serviceCategoryId],
+      (err, categories) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        if (categories.length === 0)
+          return res.status(400).json("Invalid service category.");
+        createUser();
+      },
+    );
+  });
 };
 
-export const logout = (req,res)=>{
-    console.log("logged out")
-    res.clearCookie("accessToken", {
-        secure: isProduction,
-        sameSite: isProduction ? "none" : "lax",
-        httpOnly: true,
-    }).status(200).json("User has been logged out.")
-}
+export const login = (req, res) => {
+  // CHECK IF USER EXISTS
+  const q = "SELECT * FROM users WHERE email = ?";
 
+  db.query(q, [req.body.email], (err, data) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (data.length === 0) return res.status(404).json("User not found!");
+
+    const checkPassword = bcrypt.compareSync(
+      req.body.password,
+      data[0].password,
+    );
+
+    if (!checkPassword) return res.status(400).json("Wrong password or email!");
+
+    const others = { ...data[0] };
+    delete others.password;
+    const token = createTokens(data[0]);
+
+    res
+      .cookie("accessToken", token, {
+        maxAge: 60 * 60 * 24 * 30 * 1000,
+        httpOnly: true,
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+      })
+      .status(200)
+      .json({ ...withProviderIdentity(others), token });
+    console.log("logged in");
+  });
+};
+
+export const logout = (req, res) => {
+  console.log("logged out");
+  res
+    .clearCookie("accessToken", {
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
+      httpOnly: true,
+    })
+    .status(200)
+    .json("User has been logged out.");
+};
 
 function sendEmail({ recipient_email, OTP }) {
-    return new Promise((resolve, reject) => {
-  
-      const mail_configs = {
-        from: mailFrom(),
-        to: recipient_email,
-        subject: "PostStation Secure Password Reset",
-        html: `<!DOCTYPE html>
+  return new Promise((resolve, reject) => {
+    const mail_configs = {
+      from: mailFrom(),
+      to: recipient_email,
+      subject: "PostStation Secure Password Reset",
+      html: `<!DOCTYPE html>
                   <html lang="en" >
                     <head>
                       <meta charset="UTF-8">
@@ -160,21 +203,21 @@ function sendEmail({ recipient_email, OTP }) {
                       <!-- partial -->
                     </body>
                   </html>`,
-      };
+    };
 
-      try {
-        getMailer().sendMail(mail_configs, function (error, info) {
-          if (error) {
-            console.error("password_recovery_email_failed");
-            return reject({ message: `An error has occured` });
-          }
-          return resolve({ message: "Email sent succesfuly" });
-        });
-      } catch (error) {
-        console.error("password_recovery_email_failed");
-        reject({ message: "Unable to send recovery email." });
-      }
-    });
+    try {
+      getMailer().sendMail(mail_configs, function (error) {
+        if (error) {
+          console.error("password_recovery_email_failed");
+          return reject({ message: `An error has occured` });
+        }
+        return resolve({ message: "Email sent succesfuly" });
+      });
+    } catch {
+      console.error("password_recovery_email_failed");
+      reject({ message: "Unable to send recovery email." });
+    }
+  });
 }
 
 export const sendRecoveryEmail = (req, res) => {
@@ -184,21 +227,21 @@ export const sendRecoveryEmail = (req, res) => {
       console.log("fake email sent!");
     })
     .catch((error) => res.status(500).send(error.message));
-}
+};
 
 export const resetPassword = (req, res) => {
   const q = "SELECT * FROM users WHERE email = ?";
-  db.query(q,[req.body.email], (err,data)=>{
+  db.query(q, [req.body.email], (err, data) => {
     if (err) return res.status(500).json({ code: "request_failed" });
     if (data.length === 0) return res.status(404).json("User not found!");
     else {
       const salt = bcrypt.genSaltSync(10);
       const hashedPassword = bcrypt.hashSync(req.body.password, salt);
-      const q = "UPDATE users SET password = ? WHERE email = ?"
-      db.query(q,[hashedPassword, req.body.email],(err)=>{
-        if(err) return res.status(500).json({ code: "request_failed" })
-        return res.status(200).json("Password has been updated.")
+      const q = "UPDATE users SET password = ? WHERE email = ?";
+      db.query(q, [hashedPassword, req.body.email], (err) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        return res.status(200).json("Password has been updated.");
       });
     }
   });
-}
+};

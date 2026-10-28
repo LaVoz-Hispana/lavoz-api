@@ -4,34 +4,59 @@ import { logEvent } from "../utils/escrowLogger.js";
 import { sendNotification } from "../utils/notificationHelper.js";
 import { withTransaction } from "../services/notificationDb.js";
 import { directEscrow } from "../services/directEscrow.js";
-import { providerDisplayNameSql, providerTypeLabelSql } from "../services/providerIdentity.js";
+import {
+  providerDisplayNameSql,
+  providerTypeLabelSql,
+} from "../services/providerIdentity.js";
 
 const now = () => moment(Date.now()).format("YYYY-MM-DD HH:mm:ss");
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const fetchEscrow = (id, cb) => {
-    db.query("SELECT * FROM escrows WHERE id = ?", [id], (err, data) => {
-        if (err) return cb(err);
-        if (!data || data.length === 0) return cb(null, null);
-        cb(null, data[0]);
-    });
+  db.query("SELECT * FROM escrows WHERE id = ?", [id], (err, data) => {
+    if (err) return cb(err);
+    if (!data || data.length === 0) return cb(null, null);
+    cb(null, data[0]);
+  });
 };
 
 // ─── Handlers ───────────────────────────────────────────────────────────────
 
 // POST /api/escrows — admin only (Escrow Lock)
 const createDirectEscrow = (admin) => async (req, res) => {
-    try {
-        const created = await directEscrow(withTransaction)(req.user, req.body, admin);
-        await sendNotification(created.studentId, req.user.id, "escrow_invited", created.id);
-        if (admin) await sendNotification(created.localId, req.user.id, "escrow_invited", created.id);
-        return res.status(201).json({ id: created.id });
-    } catch (error) {
-        const code = error.status ? error.code : "request_failed";
-        return res.status(error.status || 500).json({ code, error: code === "application_selection_required"
-            ? "Select an applicant from the project's Applications section." : code });
-    }
+  try {
+    const created = await directEscrow(withTransaction)(
+      req.user,
+      req.body,
+      admin,
+    );
+    await sendNotification(
+      created.studentId,
+      req.user.id,
+      "escrow_invited",
+      created.id,
+    );
+    if (admin)
+      await sendNotification(
+        created.localId,
+        req.user.id,
+        "escrow_invited",
+        created.id,
+      );
+    return res.status(201).json({ id: created.id });
+  } catch (error) {
+    const code = error.status ? error.code : "request_failed";
+    return res
+      .status(error.status || 500)
+      .json({
+        code,
+        error:
+          code === "application_selection_required"
+            ? "Select an applicant from the project's Applications section."
+            : code,
+      });
+  }
 };
 export const createEscrow = createDirectEscrow(true);
 
@@ -40,7 +65,7 @@ export const createEscrowByLocal = createDirectEscrow(false);
 
 // GET /api/escrows — admin only, full list
 export const getAllEscrows = (req, res) => {
-    const q = `
+  const q = `
         SELECT e.*,
             p.title  AS projectTitle,
             s.username AS studentUsername, s.profilePic AS studentProfilePic,
@@ -54,17 +79,17 @@ export const getAllEscrows = (req, res) => {
         LEFT JOIN users AS a ON (a.id = e.adminId)
         ORDER BY e.createdAt DESC
     `;
-    db.query(q, (err, data) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        return res.status(200).json(data);
-    });
+  db.query(q, (err, data) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    return res.status(200).json(data);
+  });
 };
 
 // GET /api/escrows/mine — student or local sees their own escrows
 export const getMyEscrows = (req, res) => {
-    const userId = req.user.id;
+  const userId = req.user.id;
 
-    const q = `
+  const q = `
         SELECT e.*,
             p.title  AS projectTitle,
             s.username AS studentUsername, s.profilePic AS studentProfilePic,
@@ -77,17 +102,17 @@ export const getMyEscrows = (req, res) => {
         WHERE e.studentId = ? OR e.localId = ?
         ORDER BY e.createdAt DESC
     `;
-    db.query(q, [userId, userId], (err, data) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        return res.status(200).json(data);
-    });
+  db.query(q, [userId, userId], (err, data) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    return res.status(200).json(data);
+  });
 };
 
 // GET /api/escrows/:id — participants + admin
 export const getEscrowById = (req, res) => {
-    const escrowId = req.params.id;
+  const escrowId = req.params.id;
 
-    const escrowQ = `
+  const escrowQ = `
         SELECT e.*,
             p.title AS projectTitle, p.description AS projectDescription,
             p.skills AS projectSkills, p.timeline AS projectTimeline,
@@ -108,27 +133,38 @@ export const getEscrowById = (req, res) => {
         ))
         WHERE e.id = ?
     `;
-    db.query(escrowQ, [escrowId], (err, data) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
+  db.query(escrowQ, [escrowId], (err, data) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!data || data.length === 0)
+      return res.status(404).json({ error: "Escrow not found." });
 
-        const row = data[0];
-        const uid  = req.user.id;
-        const role = req.user.is_admin ? "admin" : req.user.account_type;
-        const isParticipant = row.studentId === uid || row.localId === uid;
+    const row = data[0];
+    const uid = req.user.id;
+    const isParticipant = row.studentId === uid || row.localId === uid;
 
-        if (!req.user.is_admin && !isParticipant) {
-            return res.status(403).json({ error: "Forbidden." });
+    if (!req.user.is_admin && !isParticipant) {
+      return res.status(403).json({ error: "Forbidden." });
+    }
+
+    // Pull artifact_* columns into a nested object (null when no artifact exists)
+    const {
+      artifact_id,
+      artifact_fileUrl,
+      artifact_description,
+      artifact_createdAt,
+      ...escrow
+    } = row;
+    escrow.artifact = artifact_id
+      ? {
+          id: artifact_id,
+          fileUrl: artifact_fileUrl,
+          description: artifact_description,
+          createdAt: artifact_createdAt,
         }
+      : null;
 
-        // Pull artifact_* columns into a nested object (null when no artifact exists)
-        const { artifact_id, artifact_fileUrl, artifact_description, artifact_createdAt, ...escrow } = row;
-        escrow.artifact = artifact_id
-            ? { id: artifact_id, fileUrl: artifact_fileUrl, description: artifact_description, createdAt: artifact_createdAt }
-            : null;
-
-        // Fetch milestones with their latest artifact each
-        const milestonesQ = `
+    // Fetch milestones with their latest artifact each
+    const milestonesQ = `
             SELECT m.*,
                 ar.id       AS latestArtifact_id,
                 ar.fileUrl  AS latestArtifact_fileUrl,
@@ -141,48 +177,60 @@ export const getEscrowById = (req, res) => {
             WHERE m.escrowId = ?
             ORDER BY m.\`order\` ASC
         `;
-        db.query(milestonesQ, [escrowId], (err, milestoneRows) => {
-            if (err) return res.status(500).json({ code: "request_failed" });
+    db.query(milestonesQ, [escrowId], (err, milestoneRows) => {
+      if (err) return res.status(500).json({ code: "request_failed" });
 
-            escrow.milestones = milestoneRows.map((m) => {
-                const {
-                    latestArtifact_id, latestArtifact_fileUrl,
-                    latestArtifact_description, latestArtifact_createdAt,
-                    ...milestone
-                } = m;
-                milestone.latestArtifact = latestArtifact_id
-                    ? { id: latestArtifact_id, fileUrl: latestArtifact_fileUrl, description: latestArtifact_description, createdAt: latestArtifact_createdAt }
-                    : null;
-                return milestone;
-            });
+      escrow.milestones = milestoneRows.map((m) => {
+        const {
+          latestArtifact_id,
+          latestArtifact_fileUrl,
+          latestArtifact_description,
+          latestArtifact_createdAt,
+          ...milestone
+        } = m;
+        milestone.latestArtifact = latestArtifact_id
+          ? {
+              id: latestArtifact_id,
+              fileUrl: latestArtifact_fileUrl,
+              description: latestArtifact_description,
+              createdAt: latestArtifact_createdAt,
+            }
+          : null;
+        return milestone;
+      });
 
-            const total    = milestoneRows.length;
-            const approved = milestoneRows.filter((m) => m.status === "approved").length;
-            escrow.progress = { total, approved };
+      const total = milestoneRows.length;
+      const approved = milestoneRows.filter(
+        (m) => m.status === "approved",
+      ).length;
+      escrow.progress = { total, approved };
 
-            return res.status(200).json(escrow);
-        });
+      return res.status(200).json(escrow);
     });
+  });
 };
 
 // GET /api/escrows/:id/events — participants + admin
 export const getEscrowEvents = (req, res) => {
-    const escrowId = req.params.id;
+  const escrowId = req.params.id;
 
-    db.query("SELECT studentId, localId FROM escrows WHERE id = ?", [escrowId], (err, data) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!data || data.length === 0) return res.status(404).json({ error: "Escrow not found." });
+  db.query(
+    "SELECT studentId, localId FROM escrows WHERE id = ?",
+    [escrowId],
+    (err, data) => {
+      if (err) return res.status(500).json({ code: "request_failed" });
+      if (!data || data.length === 0)
+        return res.status(404).json({ error: "Escrow not found." });
 
-        const escrow = data[0];
-        const uid  = req.user.id;
-        const role = req.user.is_admin ? "admin" : req.user.account_type;
-        const isParticipant = escrow.studentId === uid || escrow.localId === uid;
+      const escrow = data[0];
+      const uid = req.user.id;
+      const isParticipant = escrow.studentId === uid || escrow.localId === uid;
 
-        if (!req.user.is_admin && !isParticipant) {
-            return res.status(403).json({ error: "Forbidden." });
-        }
+      if (!req.user.is_admin && !isParticipant) {
+        return res.status(403).json({ error: "Forbidden." });
+      }
 
-        const q = `
+      const q = `
             SELECT
                 ev.id, ev.escrowId, ev.milestoneId, ev.artifactId,
                 ev.actorId, ev.actorRole, ev.eventType, ev.note, ev.createdAt,
@@ -198,170 +246,235 @@ export const getEscrowEvents = (req, res) => {
             WHERE ev.escrowId = ?
             ORDER BY ev.createdAt ASC
         `;
-        db.query(q, [escrowId], (err, events) => {
-            if (err) return res.status(500).json({ code: "request_failed" });
-            return res.status(200).json(events);
-        });
-    });
+      db.query(q, [escrowId], (err, events) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        return res.status(200).json(events);
+      });
+    },
+  );
 };
 
 // PUT /api/escrows/:id/status — role-dependent transitions
 export const updateEscrowStatus = (req, res) => {
-    const { status: nextStatus } = req.body;
-    const uid  = req.user.id;
-    const role = req.user.is_admin ? "admin" : req.user.account_type;
+  const { status: nextStatus } = req.body;
+  const uid = req.user.id;
+  const role = req.user.is_admin ? "admin" : req.user.account_type;
 
-    if (!nextStatus) return res.status(400).json({ error: "status is required." });
+  if (!nextStatus)
+    return res.status(400).json({ error: "status is required." });
 
-    fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!escrow) return res.status(404).json({ error: "Escrow not found." });
+  fetchEscrow(req.params.id, (err, escrow) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!escrow) return res.status(404).json({ error: "Escrow not found." });
 
-        const current = escrow.status;
+    const current = escrow.status;
 
-        // Validate transition and caller
-        const allowed = isTransitionAllowed(current, nextStatus, role, uid, escrow);
-        if (!allowed) {
-            return res.status(403).json({ error: `Transition '${current}' → '${nextStatus}' is not permitted for your role.` });
-        }
-
-        const timestampField = transitionTimestampField(nextStatus);
-        const ts = now();
-
-        const q = timestampField
-            ? `UPDATE escrows SET status = ?, ${timestampField} = ? WHERE id = ?`
-            : `UPDATE escrows SET status = ? WHERE id = ?`;
-
-        const params = timestampField
-            ? [nextStatus, ts, escrow.id]
-            : [nextStatus, escrow.id];
-
-        db.query(q, params, (err) => {
-            if (err) return res.status(500).json({ code: "request_failed" });
-            if (nextStatus === "cancelled") {
-                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], (err) => {
-                    if (err) return res.status(500).json({ code: "request_failed" });
-                    return res.status(200).json("Status updated.");
-                });
-            } else {
-                return res.status(200).json("Status updated.");
-            }
+    // Validate transition and caller
+    const allowed = isTransitionAllowed(current, nextStatus, role, uid, escrow);
+    if (!allowed) {
+      return res
+        .status(403)
+        .json({
+          error: `Transition '${current}' → '${nextStatus}' is not permitted for your role.`,
         });
+    }
+
+    const timestampField = transitionTimestampField(nextStatus);
+    const ts = now();
+
+    const q = timestampField
+      ? `UPDATE escrows SET status = ?, ${timestampField} = ? WHERE id = ?`
+      : `UPDATE escrows SET status = ? WHERE id = ?`;
+
+    const params = timestampField
+      ? [nextStatus, ts, escrow.id]
+      : [nextStatus, escrow.id];
+
+    db.query(q, params, (err) => {
+      if (err) return res.status(500).json({ code: "request_failed" });
+      if (nextStatus === "cancelled") {
+        db.query(
+          "UPDATE projects SET status = 'open' WHERE id = ?",
+          [escrow.projectId],
+          (err) => {
+            if (err) return res.status(500).json({ code: "request_failed" });
+            return res.status(200).json("Status updated.");
+          },
+        );
+      } else {
+        return res.status(200).json("Status updated.");
+      }
     });
+  });
 };
 
 // PUT /api/escrows/:id/complete — local marks work as complete (submitted → completed)
 export const completeEscrow = (req, res) => {
-    fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!escrow) return res.status(404).json({ error: "Escrow not found." });
-        if (escrow.localId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
-        if (escrow.status !== "submitted") return res.status(409).json({ error: "Only submitted escrows can be completed." });
+  fetchEscrow(req.params.id, (err, escrow) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!escrow) return res.status(404).json({ error: "Escrow not found." });
+    if (escrow.localId !== req.user.id)
+      return res.status(403).json({ error: "Forbidden." });
+    if (escrow.status !== "submitted")
+      return res
+        .status(409)
+        .json({ error: "Only submitted escrows can be completed." });
 
-        db.query(
-            "UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?",
-            [now(), escrow.id],
-            async (err) => {
-                if (err) return res.status(500).json({ code: "request_failed" });
-                await sendNotification(escrow.studentId, req.user.id, "escrow_completed", escrow.id);
-                return res.status(200).json("Escrow completed.");
-            }
+    db.query(
+      "UPDATE escrows SET status = 'completed', resolvedAt = ? WHERE id = ?",
+      [now(), escrow.id],
+      async (err) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        await sendNotification(
+          escrow.studentId,
+          req.user.id,
+          "escrow_completed",
+          escrow.id,
         );
-    });
+        return res.status(200).json("Escrow completed.");
+      },
+    );
+  });
 };
 
 // PUT /api/escrows/:id/reopen — local sends back for revision (submitted → active)
 export const reopenEscrow = (req, res) => {
-    fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!escrow) return res.status(404).json({ error: "Escrow not found." });
-        if (escrow.localId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
-        if (escrow.status !== "submitted") return res.status(409).json({ error: "Only submitted escrows can be reopened." });
+  fetchEscrow(req.params.id, (err, escrow) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!escrow) return res.status(404).json({ error: "Escrow not found." });
+    if (escrow.localId !== req.user.id)
+      return res.status(403).json({ error: "Forbidden." });
+    if (escrow.status !== "submitted")
+      return res
+        .status(409)
+        .json({ error: "Only submitted escrows can be reopened." });
 
-        db.query(
-            "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
-            [now(), escrow.id],
-            async (err) => {
-                if (err) return res.status(500).json({ code: "request_failed" });
-                await sendNotification(escrow.studentId, req.user.id, "escrow_reopened", escrow.id);
-                return res.status(200).json("Escrow reopened.");
-            }
+    db.query(
+      "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
+      [now(), escrow.id],
+      async (err) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        await sendNotification(
+          escrow.studentId,
+          req.user.id,
+          "escrow_reopened",
+          escrow.id,
         );
-    });
+        return res.status(200).json("Escrow reopened.");
+      },
+    );
+  });
 };
 
 // PUT /api/escrows/:id/accept — student accepts a pending invitation
 export const acceptEscrow = (req, res) => {
-    fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!escrow) return res.status(404).json({ error: "Escrow not found." });
-        if (escrow.studentId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
-        if (escrow.status !== "pending") return res.status(409).json({ error: "Only pending escrows can be accepted." });
+  fetchEscrow(req.params.id, (err, escrow) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!escrow) return res.status(404).json({ error: "Escrow not found." });
+    if (escrow.studentId !== req.user.id)
+      return res.status(403).json({ error: "Forbidden." });
+    if (escrow.status !== "pending")
+      return res
+        .status(409)
+        .json({ error: "Only pending escrows can be accepted." });
 
-        db.query(
-            "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
-            [now(), escrow.id],
-            async (err) => {
-                if (err) return res.status(500).json({ code: "request_failed" });
-                logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_accepted" });
-                await sendNotification(escrow.localId, req.user.id, "student_accepted", escrow.id);
-                return res.status(200).json("Escrow accepted.");
-            }
+    db.query(
+      "UPDATE escrows SET status = 'active', activeAt = ? WHERE id = ?",
+      [now(), escrow.id],
+      async (err) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
+        logEvent(db, {
+          escrowId: escrow.id,
+          actorId: req.user.id,
+          actorRole: req.user.account_type,
+          eventType: "student_accepted",
+        });
+        await sendNotification(
+          escrow.localId,
+          req.user.id,
+          "student_accepted",
+          escrow.id,
         );
-    });
+        return res.status(200).json("Escrow accepted.");
+      },
+    );
+  });
 };
 
 // PUT /api/escrows/:id/cancel — student declines a pending invitation
 export const cancelEscrowByStudent = (req, res) => {
-    fetchEscrow(req.params.id, (err, escrow) => {
-        if (err) return res.status(500).json({ code: "request_failed" });
-        if (!escrow) return res.status(404).json({ error: "Escrow not found." });
-        if (escrow.studentId !== req.user.id) return res.status(403).json({ error: "Forbidden." });
-        if (escrow.status !== "pending") return res.status(409).json({ error: "Only pending escrows can be declined." });
+  fetchEscrow(req.params.id, (err, escrow) => {
+    if (err) return res.status(500).json({ code: "request_failed" });
+    if (!escrow) return res.status(404).json({ error: "Escrow not found." });
+    if (escrow.studentId !== req.user.id)
+      return res.status(403).json({ error: "Forbidden." });
+    if (escrow.status !== "pending")
+      return res
+        .status(409)
+        .json({ error: "Only pending escrows can be declined." });
 
+    db.query(
+      "UPDATE escrows SET status = 'cancelled', resolvedAt = ? WHERE id = ?",
+      [now(), escrow.id],
+      (err) => {
+        if (err) return res.status(500).json({ code: "request_failed" });
         db.query(
-            "UPDATE escrows SET status = 'cancelled', resolvedAt = ? WHERE id = ?",
-            [now(), escrow.id],
-            (err) => {
-                if (err) return res.status(500).json({ code: "request_failed" });
-                db.query("UPDATE projects SET status = 'open' WHERE id = ?", [escrow.projectId], async (err) => {
-                    if (err) return res.status(500).json({ code: "request_failed" });
-                    logEvent(db, { escrowId: escrow.id, actorId: req.user.id, actorRole: req.user.account_type, eventType: "student_declined" });
-                    await sendNotification(escrow.localId, req.user.id, "student_declined", escrow.id);
-                    return res.status(200).json("Escrow declined.");
-                });
-            }
+          "UPDATE projects SET status = 'open' WHERE id = ?",
+          [escrow.projectId],
+          async (err) => {
+            if (err) return res.status(500).json({ code: "request_failed" });
+            logEvent(db, {
+              escrowId: escrow.id,
+              actorId: req.user.id,
+              actorRole: req.user.account_type,
+              eventType: "student_declined",
+            });
+            await sendNotification(
+              escrow.localId,
+              req.user.id,
+              "student_declined",
+              escrow.id,
+            );
+            return res.status(200).json("Escrow declined.");
+          },
         );
-    });
+      },
+    );
+  });
 };
 
 // ─── Transition logic ────────────────────────────────────────────────────────
 
 const isTransitionAllowed = (current, next, role, uid, escrow) => {
-    // admin can cancel from any state
-    if (next === "cancelled" && role === "admin") return true;
+  // admin can cancel from any state
+  if (next === "cancelled" && role === "admin") return true;
 
-    switch (`${current}→${next}`) {
-        case "pending→active":
-            return role === "admin";
-        case "active→submitted":
-            return role === "student" && escrow.studentId === uid;
-        case "submitted→completed":
-            return role === "local" && escrow.localId === uid;
-        case "submitted→active":
-            return role === "local" && escrow.localId === uid;
-        default:
-            return false;
-    }
+  switch (`${current}→${next}`) {
+    case "pending→active":
+      return role === "admin";
+    case "active→submitted":
+      return role === "student" && escrow.studentId === uid;
+    case "submitted→completed":
+      return role === "local" && escrow.localId === uid;
+    case "submitted→active":
+      return role === "local" && escrow.localId === uid;
+    default:
+      return false;
+  }
 };
 
 const transitionTimestampField = (status) => {
-    switch (status) {
-        case "pending":    return "pendingAt";
-        case "active":     return "activeAt";
-        case "submitted":  return "submittedAt";
-        case "completed":
-        case "cancelled":  return "resolvedAt";
-        default:           return null;
-    }
+  switch (status) {
+    case "pending":
+      return "pendingAt";
+    case "active":
+      return "activeAt";
+    case "submitted":
+      return "submittedAt";
+    case "completed":
+    case "cancelled":
+      return "resolvedAt";
+    default:
+      return null;
+  }
 };

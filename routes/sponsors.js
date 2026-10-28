@@ -1,5 +1,12 @@
 import express from "express";
-import { createSponsor, deleteSponsor, getSponsorSection, getSponsors, updateSponsor, updateSponsorSection } from "../controllers/sponsor.js";
+import {
+  createSponsor,
+  deleteSponsor,
+  getSponsorSection,
+  getSponsors,
+  updateSponsor,
+  updateSponsorSection,
+} from "../controllers/sponsor.js";
 import { validateToken } from "../jwt.js";
 
 const router = express.Router();

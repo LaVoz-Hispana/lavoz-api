@@ -4,22 +4,27 @@ const isHttpUrl = (value) => {
   try {
     const url = new URL(value);
     return url.protocol === "http:" || url.protocol === "https:";
-  } catch (_) {
+  } catch {
     return false;
   }
 };
 
 const normalizeSponsorType = (value) => {
-  const type = String(value || "regular").trim().toLowerCase();
+  const type = String(value || "regular")
+    .trim()
+    .toLowerCase();
   if (type === "regular" || type === "principle") return type;
   return null;
 };
 
 export const getSponsors = (req, res) => {
-  db.query("SELECT id, name, logoUrl, link, sponsorType, createdAt FROM sponsors ORDER BY id ASC", (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json(data);
-  });
+  db.query(
+    "SELECT id, name, logoUrl, link, sponsorType, createdAt FROM sponsors ORDER BY id ASC",
+    (err, data) => {
+      if (err) return res.status(500).json(err);
+      return res.status(200).json(data);
+    },
+  );
 };
 
 export const getSponsorSection = (req, res) => {
@@ -28,7 +33,7 @@ export const getSponsorSection = (req, res) => {
     (err, data) => {
       if (err) return res.status(500).json(err);
       return res.status(200).json(data[0] || null);
-    }
+    },
   );
 };
 
@@ -37,7 +42,11 @@ export const updateSponsorSection = (req, res) => {
   const contentEs = String(req.body.contentEs || "").trim();
 
   if (!contentEn || !contentEs) {
-    return res.status(400).json({ error: "Both English and Spanish sponsor messages are required." });
+    return res
+      .status(400)
+      .json({
+        error: "Both English and Spanish sponsor messages are required.",
+      });
   }
 
   const q = `
@@ -49,14 +58,18 @@ export const updateSponsorSection = (req, res) => {
       updatedByUserId = VALUES(updatedByUserId)
   `;
 
-  db.query(q, ["sponsor_support", contentEn, contentEs, req.user?.id || null], (err) => {
-    if (err) return res.status(500).json(err);
-    return res.status(200).json({
-      sectionKey: "sponsor_support",
-      contentEn,
-      contentEs,
-    });
-  });
+  db.query(
+    q,
+    ["sponsor_support", contentEn, contentEs, req.user?.id || null],
+    (err) => {
+      if (err) return res.status(500).json(err);
+      return res.status(200).json({
+        sectionKey: "sponsor_support",
+        contentEn,
+        contentEs,
+      });
+    },
+  );
 };
 
 export const createSponsor = (req, res) => {
@@ -66,20 +79,31 @@ export const createSponsor = (req, res) => {
   const sponsorType = normalizeSponsorType(req.body.sponsorType);
 
   if (!name || !logoUrl || !link) {
-    return res.status(400).json({ error: "A sponsor name, logo, and link are required." });
+    return res
+      .status(400)
+      .json({ error: "A sponsor name, logo, and link are required." });
   }
   if (!isHttpUrl(logoUrl) || !isHttpUrl(link)) {
-    return res.status(400).json({ error: "Logo and link must be valid HTTP(S) URLs." });
+    return res
+      .status(400)
+      .json({ error: "Logo and link must be valid HTTP(S) URLs." });
   }
   if (!sponsorType) {
     return res.status(400).json({ error: "A valid sponsor type is required." });
   }
 
-  const q = "INSERT INTO sponsors (`name`, `logoUrl`, `link`, `sponsorType`, `createdByUserId`) VALUES (?)";
-  db.query(q, [[name, logoUrl, link, sponsorType, req.user.id]], (err, data) => {
-    if (err) return res.status(500).json(err);
-    return res.status(201).json({ id: data.insertId, name, logoUrl, link, sponsorType });
-  });
+  const q =
+    "INSERT INTO sponsors (`name`, `logoUrl`, `link`, `sponsorType`, `createdByUserId`) VALUES (?)";
+  db.query(
+    q,
+    [[name, logoUrl, link, sponsorType, req.user.id]],
+    (err, data) => {
+      if (err) return res.status(500).json(err);
+      return res
+        .status(201)
+        .json({ id: data.insertId, name, logoUrl, link, sponsorType });
+    },
+  );
 };
 
 export const updateSponsor = (req, res) => {
@@ -93,10 +117,14 @@ export const updateSponsor = (req, res) => {
     return res.status(400).json({ error: "A valid sponsor id is required." });
   }
   if (!name || !logoUrl || !link) {
-    return res.status(400).json({ error: "A sponsor name, logo, and link are required." });
+    return res
+      .status(400)
+      .json({ error: "A sponsor name, logo, and link are required." });
   }
   if (!isHttpUrl(logoUrl) || !isHttpUrl(link)) {
-    return res.status(400).json({ error: "Logo and link must be valid HTTP(S) URLs." });
+    return res
+      .status(400)
+      .json({ error: "Logo and link must be valid HTTP(S) URLs." });
   }
   if (!sponsorType) {
     return res.status(400).json({ error: "A valid sponsor type is required." });
@@ -110,15 +138,21 @@ export const updateSponsor = (req, res) => {
 
   db.query(q, [name, logoUrl, link, sponsorType, id], (err, data) => {
     if (err) return res.status(500).json(err);
-    if (data.affectedRows === 0) return res.status(404).json({ error: "Sponsor not found." });
+    if (data.affectedRows === 0)
+      return res.status(404).json({ error: "Sponsor not found." });
     return res.status(200).json({ id, name, logoUrl, link, sponsorType });
   });
 };
 
 export const deleteSponsor = (req, res) => {
-  db.query("DELETE FROM sponsors WHERE id = ?", [req.params.id], (err, data) => {
-    if (err) return res.status(500).json(err);
-    if (data.affectedRows === 0) return res.status(404).json({ error: "Sponsor not found." });
-    return res.status(200).json({ message: "Sponsor removed." });
-  });
+  db.query(
+    "DELETE FROM sponsors WHERE id = ?",
+    [req.params.id],
+    (err, data) => {
+      if (err) return res.status(500).json(err);
+      if (data.affectedRows === 0)
+        return res.status(404).json({ error: "Sponsor not found." });
+      return res.status(200).json({ message: "Sponsor removed." });
+    },
+  );
 };

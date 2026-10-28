@@ -1,13 +1,32 @@
 export const marketplaceTypes = new Set([
-  "application_submitted", "application_selected", "application_rejected", "application_withdrawn",
-  "escrow_invited", "student_accepted", "student_declined", "milestone_added",
-  "milestone_approved", "change_requested", "artifact_submitted", "escrow_completed", "escrow_reopened",
+  "application_submitted",
+  "application_selected",
+  "application_rejected",
+  "application_withdrawn",
+  "escrow_invited",
+  "student_accepted",
+  "student_declined",
+  "milestone_added",
+  "milestone_approved",
+  "change_requested",
+  "artifact_submitted",
+  "escrow_completed",
+  "escrow_reopened",
 ]);
-export const notificationTypes = new Set([...marketplaceTypes, "comment", "reaction", "follow"]);
+export const notificationTypes = new Set([
+  ...marketplaceTypes,
+  "comment",
+  "reaction",
+  "follow",
+]);
 
 export function normalizeLanguage(value) {
-  const language = String(value || "").trim().toLowerCase();
-  return /^(es($|[-_])|español$|espanol$|spanish$)/.test(language) ? "es" : "en";
+  const language = String(value || "")
+    .trim()
+    .toLowerCase();
+  return /^(es($|[-_])|español$|espanol$|spanish$)/.test(language)
+    ? "es"
+    : "en";
 }
 
 const copy = {
@@ -55,18 +74,34 @@ const copy = {
 
 export function clientBaseUrl(value) {
   const url = new URL(value);
-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+  if (
+    !["https:", "http:"].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
     throw new Error("Invalid CLIENT_URL");
   }
   return url.href.replace(/\/$/, "");
 }
 
-const escapeHtml = (value) => value.replace(/[&<>"']/g, (character) => ({
-  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-}[character]));
+const escapeHtml = (value) =>
+  value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character],
+  );
 
 export function renderNotification(notification, language, clientUrl) {
-  if (!notificationTypes.has(notification.type)) throw new Error("Unknown notification type");
+  if (!notificationTypes.has(notification.type))
+    throw new Error("Unknown notification type");
   const locale = normalizeLanguage(language);
   const strings = copy[locale];
   const { type } = notification;

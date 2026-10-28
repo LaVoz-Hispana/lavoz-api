@@ -12,13 +12,19 @@ export const notificationPool = mysql.createPool({
   connectionLimit: 4,
 });
 
-export const query = (connection, sql, values = []) => new Promise((resolve, reject) => {
-  connection.query(sql, values, (error, result) => error ? reject(error) : resolve(result));
-});
+export const query = (connection, sql, values = []) =>
+  new Promise((resolve, reject) => {
+    connection.query(sql, values, (error, result) =>
+      error ? reject(error) : resolve(result),
+    );
+  });
 
-export const getConnection = () => new Promise((resolve, reject) => {
-  notificationPool.getConnection((error, connection) => error ? reject(error) : resolve(connection));
-});
+export const getConnection = () =>
+  new Promise((resolve, reject) => {
+    notificationPool.getConnection((error, connection) =>
+      error ? reject(error) : resolve(connection),
+    );
+  });
 
 export async function withTransaction(work) {
   const connection = await getConnection();
@@ -28,7 +34,11 @@ export async function withTransaction(work) {
     await query(connection, "COMMIT");
     return result;
   } catch (error) {
-    try { await query(connection, "ROLLBACK"); } catch { connection.destroy(); }
+    try {
+      await query(connection, "ROLLBACK");
+    } catch {
+      connection.destroy();
+    }
     throw error;
   } finally {
     connection.release();

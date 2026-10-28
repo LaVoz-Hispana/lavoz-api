@@ -32,6 +32,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Check entry point syntax
         run: |
           node --check index.js
